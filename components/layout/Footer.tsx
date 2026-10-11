@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
+import { Logo } from "@/components/brand/Logo";
 import {
   ArrowRight,
   Mail,
@@ -94,12 +95,13 @@ export default function Footer() {
           <div className="lg:col-span-5 space-y-6">
             <Link
               href="/"
-              className="text-white font-bold text-xl tracking-tight inline-flex items-center gap-2"
+              className="inline-flex items-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sage-300 rounded-lg group"
+              aria-label="SiroTech Solutions Home"
             >
-              <span className="w-7 h-7 rounded-full bg-sage-300 flex items-center justify-center">
-                <span className="w-2.5 h-2.5 rounded-full bg-sage-700" />
-              </span>
-              <span>SiroTech Solutions</span>
+              <Logo
+                variant="dark"
+                className="h-16 w-auto transition-transform group-hover:scale-[1.02]"
+              />
             </Link>
 
             {/* Two-line blurb */}

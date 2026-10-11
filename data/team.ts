@@ -10,12 +10,12 @@ export interface TeamMember {
 
 export const teamMembers: TeamMember[] = [
   {
-    id: "dorah-siro",
-    name: "Dorah Siro",
+    id: "daniel-siro",
+    name: "Daniel Siro",
     role: "Founder & Principal Solutions Architect",
-    bio: "Bridging computer science with structural engineering discipline. Dorah founded SiroTech Solutions in Nairobi after leading mission-critical web applications, distributed backend services, and high-concurrency payment integrations for enterprises across Kenya and North America.",
+    bio: "Bridging computer science with structural engineering discipline. Daniel founded SiroTech Solutions in Nairobi after leading mission-critical web applications, distributed backend services, and high-concurrency payment integrations for enterprises across Kenya and North America.",
     photo: "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&q=80&w=800",
-    alt: "Portrait of Dorah Siro, Founder and Principal Solutions Architect at SiroTech",
+    alt: "Portrait of Daniel Siro, Founder and Principal Solutions Architect at SiroTech",
     skills: ["System Architecture", "Next.js", "TypeScript", "PostgreSQL", "M-Pesa APIs"],
   },
   {

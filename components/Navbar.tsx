@@ -7,6 +7,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { ChevronDown, Menu, X, ArrowRight, Search } from "lucide-react";
 import { navItems, navConfig, type NavItem } from "@/content/nav";
 import { SearchCommandDialog } from "@/components/search/SearchCommandDialog";
+import { Logo } from "@/components/brand/Logo";
 
 export default function Navbar({
   isHeroOverlay,
@@ -118,22 +119,13 @@ export default function Navbar({
             {/* Logo */}
             <Link
               href="/"
-              className={`font-bold text-lg tracking-tight flex items-center gap-2 shrink-0 ${
-                isHome ? "text-white" : "text-ink"
-              }`}
+              className="flex items-center shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sage-500 rounded-lg group"
+              aria-label="SiroTech Solutions Home"
             >
-              <span
-                className={`w-7 h-7 rounded-full flex items-center justify-center ${
-                  isHome ? "bg-white/20" : "bg-sage-300"
-                }`}
-              >
-                <span
-                  className={`w-2.5 h-2.5 rounded-full ${
-                    isHome ? "bg-white" : "bg-sage-700"
-                  }`}
-                />
-              </span>
-              <span>SiroTech</span>
+              <Logo
+                variant={isHome ? "dark" : "light"}
+                className="h-8 sm:h-9 w-auto transition-transform group-hover:scale-[1.02]"
+              />
             </Link>
 
             {/* Desktop Navigation Links */}
@@ -328,12 +320,14 @@ export default function Navbar({
               <div>
                 {/* Drawer Top Header */}
                 <div className="flex items-center justify-between pb-6 border-b border-rule">
-                  <div className="font-bold text-lg text-ink flex items-center gap-2">
-                    <span className="w-7 h-7 rounded-full bg-sage-300 flex items-center justify-center">
-                      <span className="w-2.5 h-2.5 rounded-full bg-sage-700" />
-                    </span>
-                    SiroTech Solutions
-                  </div>
+                  <Link
+                    href="/"
+                    onClick={() => setMobileOpen(false)}
+                    className="flex items-center"
+                    aria-label="SiroTech Solutions Home"
+                  >
+                    <Logo variant="light" className="h-8 w-auto" />
+                  </Link>
                   <button
                     type="button"
                     onClick={() => setMobileOpen(false)}

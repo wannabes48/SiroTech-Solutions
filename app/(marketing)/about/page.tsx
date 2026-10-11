@@ -43,7 +43,7 @@ const aboutJsonLd = {
       url: "https://sirotech.com",
       founder: {
         "@type": "Person",
-        name: "Dorah Siro",
+        name: "Daniel Siro",
         jobTitle: "Founder & Principal Solutions Architect",
         description: "Architect and computer scientist pioneering resilient software systems.",
       },
@@ -107,7 +107,7 @@ export default function AboutPage() {
                 SiroTech was founded in Nairobi on a fundamental premise: modern software is often built like temporary scaffolding rather than permanent, load-bearing infrastructure.
               </p>
               <p>
-                Having spent over a decade in architectural design before transitioning into computer science, our founder Dorah Siro noticed striking parallels between physical building failures and software outages—both stem from unexamined foundations, brittle dependencies, and rushing production without structural blueprints.
+                Having spent over a decade in architectural design before transitioning into computer science, our founder Daniel Siro noticed striking parallels between physical building failures and software outages—both stem from unexamined foundations, brittle dependencies, and rushing production without structural blueprints.
               </p>
               <p>
                 Today, SiroTech operates as an independent studio serving startups and enterprises across Kenya, the US, and Canada. We partner directly with technical leaders and non-technical founders to architect high-concurrency web applications, offline-first mobile tools, and intelligent AI workflows.
@@ -130,11 +130,11 @@ export default function AboutPage() {
             <div className="relative w-full aspect-[4/5] rounded-[32px] overflow-hidden bg-sage-100 border border-rule shadow-xl">
               <img
                 src="https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&q=80&w=800"
-                alt="Portrait of Dorah Siro, Founder and Principal Solutions Architect"
+                alt="Portrait of Daniel Siro, Founder and Principal Solutions Architect"
                 className="w-full h-full object-cover object-top"
               />
               <div className="absolute inset-0 bg-gradient-to-t from-ink/70 via-transparent to-transparent flex flex-col justify-end p-8 text-white">
-                <div className="text-lg font-bold">Dorah Siro</div>
+                <div className="text-lg font-bold">Daniel Siro</div>
                 <div className="text-xs text-sage-300 font-medium">Founder &amp; Principal Architect</div>
               </div>
             </div>
