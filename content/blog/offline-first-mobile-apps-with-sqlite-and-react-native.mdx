@@ -1,0 +1,105 @@
+---
+title: "Offline-First Mobile Apps with SQLite and React Native: Engineering for African Field Realities"
+excerpt: "How we design resilient mobile synchronization engines that allow agricultural officers, logistics drivers, and healthcare workers to operate seamlessly without cellular reception."
+date: "2026-08-24"
+category: "mobile"
+categoryLabel: "Mobile & Systems"
+tags: ["Mobile", "React Native", "SQLite", "Offline-First", "Expo"]
+cover: "https://images.unsplash.com/photo-1549317661-bd32c8ce0db2?auto=format&fit=crop&q=80&w=1200"
+author: "Kevin Ondieki"
+authorRole: "Lead Mobile Architect"
+authorAvatar: "KO"
+featured: false
+---
+
+Building mobile applications for emerging markets presents distinct infrastructure challenges that Western developers rarely encounter. In rural Kenya, cellular connectivity is not merely slow—it is intermittent, unpredictable, and frequently nonexistent.
+
+Whether inspecting tea harvests in Kericho, checking vehicle telemetry in subterranean parking lots, or logging clinical immunizations in remote dispensaries, applications must treat the local device as the primary source of truth.
+
+In this article, we share our architectural pattern for building offline-first React Native applications using embedded SQLite and conflict-free synchronization protocols.
+
+## 1. Why Cache-First Falls Short
+
+Many mobile engineering teams attempt to solve offline usability using simple HTTP caching libraries like React Query or RTK Query. While cache-first works well for reading previously loaded articles, it fails catastrophically for **write operations**:
+
+- If an agronomist records 40 produce weigh-ins while offline, in-memory mutation queues will be wiped if the Android OS kills the app in the background to free RAM.
+- Mutation retries often execute out of order upon reconnecting to 3G, causing foreign key violation errors.
+- Concurrent edits across devices lead to dirty writes and data loss.
+
+> [!NOTE]
+> Offline-first is not a caching strategy; it is a distributed systems database architecture. The local database is the primary store, and the cloud is a synchronization replica.
+
+## 2. Embedded SQLite Schema Architecture
+
+We utilize `expo-sqlite` or `op-sqlite` with local relational schemas mirrored from our PostgreSQL backend. Every record includes three synchronization metadata columns:
+
+```sql
+CREATE TABLE produce_intakes (
+  id TEXT PRIMARY KEY NOT NULL,
+  farmer_id TEXT NOT NULL,
+  gross_weight_kg REAL NOT NULL,
+  moisture_content REAL NOT NULL,
+  timestamp INTEGER NOT NULL,
+  sync_status TEXT DEFAULT 'PENDING', -- 'PENDING', 'SYNCED', 'CONFLICT'
+  version INTEGER DEFAULT 1,
+  client_updated_at INTEGER NOT NULL
+);
+```
+
+Every user action writes directly to the local SQLite database synchronously. The UI updates instantly with **0ms network latency**, giving field operators an immediate, tactile response.
+
+## 3. The Bidirectional Synchronization Pipeline
+
+Our synchronization routine executes in two distinct phases: **Push Outbox** and **Pull Ingestion**.
+
+### Phase A: Pushing Local Mutations
+Whenever the device detects network availability via NetInfo, a background worker batches all rows where `sync_status = 'PENDING'`:
+
+```typescript
+// services/sync/pushWorker.ts
+export async function pushPendingMutations(db: SQLiteDatabase) {
+  const pendingRecords = await db.getAllAsync<ProduceIntake>(
+    "SELECT * FROM produce_intakes WHERE sync_status = 'PENDING' ORDER BY timestamp ASC LIMIT 50"
+  );
+
+  if (pendingRecords.length === 0) return;
+
+  try {
+    const response = await api.post("/api/sync/batch-push", {
+      records: pendingRecords
+    });
+
+    const { acknowledgedIds } = response.data;
+
+    // Mark verified records as SYNCED
+    await db.withTransactionAsync(async () => {
+      for (const id of acknowledgedIds) {
+        await db.runAsync(
+          "UPDATE produce_intakes SET sync_status = 'SYNCED' WHERE id = ?",
+          [id]
+        );
+      }
+    });
+  } catch (error) {
+    console.warn("[Sync Outbox Warning] Push failed, will retry on next network poll", error);
+  }
+}
+```
+
+### Phase B: Pulling Server Updates
+The server returns delta changes since the client's last `high_water_mark` timestamp. Changes are applied locally within an atomic SQLite transaction, ensuring UI state remains consistent.
+
+## 4. Conflict Resolution Strategies
+
+When multiple field officers modify the same entity offline, how do you resolve diverging states? We employ two distinct patterns depending on the data domain:
+
+1. **Last-Write-Wins (LWW) with Monotonic Clocks**: For customer contact details or unit descriptions, the record with the latest server-verified timestamp wins.
+2. **Append-Only Event Logs**: For financial ledgers, inventory counts, and produce weights, updates are never overwrites. They are treated as additive event records (e.g., `ProduceWeighInLogged`), eliminating conflict altogether.
+
+## 5. Key Lessons from the Field
+
+- **Always show sync health to the user**: Give field workers an explicit visual indicator: "34 records stored locally • Last synced 2 hours ago".
+- **Optimize battery usage**: Do not poll for connectivity in an infinite tight loop. Listen to OS network change intents.
+- **Support local exports**: In emergency scenarios where mobile connectivity remains offline for days, allow managers to export pending SQLite records via Bluetooth or SD card to a laptop.
+
+By designing for the offline edge first, your mobile apps will earn immense trust from the workers who rely on them daily.

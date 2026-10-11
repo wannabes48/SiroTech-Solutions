@@ -1,0 +1,98 @@
+/* Tailwind v4 — single import replaces all @tailwind directives */
+@import "tailwindcss";
+
+/* ─── Custom theme tokens (v4 CSS-native syntax) ───────────────────────── */
+@theme {
+  /* Marquee animation */
+  --animate-marquee: marquee 30s linear infinite;
+
+  @keyframes marquee {
+    0%   { transform: translateX(0%); }
+    100% { transform: translateX(-100%); }
+  }
+
+  @keyframes accordion-down {
+    from { height: 0; opacity: 0; }
+    to { height: var(--radix-accordion-content-height); opacity: 1; }
+  }
+
+  @keyframes accordion-up {
+    from { height: var(--radix-accordion-content-height); opacity: 1; }
+    to { height: 0; opacity: 0; }
+  }
+
+  /* Core Palette from Spec */
+  --color-sage-700: #6f7f60;
+  --color-sage-500: #8fa07e;
+  --color-sage-300: #c9dbb2;
+  --color-sage-100: #e8f0dc;
+  
+  --color-ink: #111311;
+  --color-body: #5f645c;
+  --color-muted: #8d928a;
+  --color-surface: #f7f7f5;
+  --color-bg: #fbfbf9;
+  --color-rule: #e4e6e1;
+
+  --radius-card: 24px;
+  --radius-hero: 32px;
+
+  /* Typography scale */
+  --font-sans: var(--font-jakarta), system-ui, sans-serif;
+}
+
+@utility hero-bg {
+  background: linear-gradient(135deg, var(--color-sage-700), var(--color-sage-500) 55%, var(--color-sage-300));
+}
+
+.hero-bg::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+  opacity: .06;
+  pointer-events: none;
+}
+
+@utility bg-noise {
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+  opacity: 0.06;
+  mix-blend-mode: overlay;
+}
+
+@utility text-display {
+  font-size: clamp(2.5rem, 6vw, 4.5rem);
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  line-height: 1.05;
+}
+
+@utility text-h2 {
+  font-size: clamp(2rem, 4vw, 3rem);
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+
+@layer base {
+  body {
+    background-color: var(--color-bg);
+    color: var(--color-ink);
+  }
+}
+
+/* ─── Utility: pause animation on hover ────────────────────────────────── */
+@utility animation-pause {
+  animation-play-state: paused;
+}
+
+/* ─── Base resets ───────────────────────────────────────────────────────── */
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+  body {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}

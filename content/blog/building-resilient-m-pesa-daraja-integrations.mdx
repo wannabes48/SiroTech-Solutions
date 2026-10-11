@@ -1,0 +1,135 @@
+---
+title: "Building Resilient M-Pesa Daraja Integrations: Zero Dropped Callbacks in High-Concurrency Systems"
+excerpt: "How we architect asynchronous worker queues, idempotent ledger tables, and WebSockets to process high-throughput mobile money payments without double-crediting or lost transactions."
+date: "2026-09-18"
+category: "fintech"
+categoryLabel: "FinTech & Payments"
+tags: ["FinTech", "M-Pesa", "Architecture", "Redis", "TypeScript"]
+cover: "https://images.unsplash.com/photo-1563986768609-322da13575f3?auto=format&fit=crop&q=80&w=1200"
+author: "Brian Kiprono"
+authorRole: "Principal Systems Architect"
+authorAvatar: "BK"
+featured: true
+---
+
+Integrating with Safaricom's Daraja M-Pesa API is the lifeblood of commercial digital products in Kenya. However, many engineering teams treat M-Pesa like a standard REST payment gateway such as Stripe. This naive assumption quickly collapses under high transaction concurrency.
+
+In this deep dive, we outline the exact architectural patterns we implement at SiroTech Solutions to ensure zero dropped callbacks, eliminate race conditions, and provide sub-second payment confirmation to end-users.
+
+## 1. The Core Architecture Problem: The Asynchronous Callback Model
+
+When an application triggers an **STK Push** (`Lipa na M-Pesa Online`), Daraja returns an immediate HTTP response acknowledging that the USSD prompt was dispatched to the customer's SIM toolkit. 
+
+The actual payment confirmation, however, arrives seconds later via an **Instant Payment Notification (IPN)** callback to your webhook URL. This introduces three critical points of failure:
+
+1. **Callback Timeouts**: If your webhook handler runs database migrations, sends emails, or performs slow synchronous computations before replying `HTTP 200`, Daraja's gateway will timeout and queue retries.
+2. **Duplicate Deliveries**: Network retries from Safaricom can deliver the exact same payment confirmation multiple times, causing double-crediting if your ledger lacks idempotency.
+3. **Out-of-Order Execution**: The customer might navigate to the success screen before the webhook has arrived at your server.
+
+> [!WARNING]
+> Never execute business logic (such as provisioning an account or dispatching goods) synchronously inside the incoming Daraja webhook listener. The webhook must only capture and acknowledge.
+
+## 2. Decoupling Webhooks with Redis and Event-Driven Queues
+
+To achieve 99.99% callback durability, our edge listener does nothing more than validate the payload schema, push the raw payload into a Redis queue, and respond to Daraja in under **25 milliseconds**.
+
+```typescript
+// app/api/mpesa/callback/route.ts
+import { NextResponse } from "next/server";
+import { queuePaymentCallback } from "@/lib/queue/redis";
+
+export async function POST(request: Request) {
+  try {
+    const rawPayload = await request.json();
+    const { Body } = rawPayload;
+
+    if (!Body || !Body.stkCallback) {
+      return NextResponse.json({ ResultCode: 1, ResultDesc: "Invalid schema" }, { status: 400 });
+    }
+
+    // Push to high-durability Redis stream / BullMQ queue
+    await queuePaymentCallback(Body.stkCallback);
+
+    // Fast-path acknowledgment to Safaricom in under 25ms
+    return NextResponse.json({
+      ResultCode: 0,
+      ResultDesc: "Callback accepted for processing"
+    });
+  } catch (error) {
+    console.error("[Daraja IPN Error]", error);
+    return NextResponse.json({ ResultCode: 1, ResultDesc: "Queue error" }, { status: 500 });
+  }
+}
+```
+
+By offloading the payment reconciliation to background worker nodes, your application can survive unexpected traffic surges—such as flash sales or salary disbursement windows—without dropping callbacks.
+
+## 3. Enforcing Idempotency on the Ledger
+
+To prevent duplicate crediting when Daraja retries a webhook, every transaction must be processed against a unique database constraint.
+
+In PostgreSQL, we structure the payment transaction table using Safaricom's `MpesaReceiptNumber` (e.g., `QKH71829AB`) as a strict unique constraint:
+
+```sql
+CREATE TABLE payment_transactions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  checkout_request_id VARCHAR(64) NOT NULL UNIQUE,
+  mpesa_receipt_number VARCHAR(32) UNIQUE,
+  amount NUMERIC(12, 2) NOT NULL,
+  phone_number VARCHAR(16) NOT NULL,
+  status VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  settled_at TIMESTAMP WITH TIME ZONE
+);
+```
+
+When the background worker consumes the event, it executes an atomic `UPSERT` transaction:
+
+```typescript
+await prisma.$transaction(async (tx) => {
+  const existing = await tx.paymentTransaction.findUnique({
+    where: { mpesaReceiptNumber: callbackData.MpesaReceiptNumber }
+  });
+
+  if (existing && existing.status === "COMPLETED") {
+    // Gracefully ignore duplicate callback
+    return existing;
+  }
+
+  // Update order status and record double-entry accounting ledger entry
+  return await tx.paymentTransaction.update({
+    where: { checkoutRequestId: callbackData.CheckoutRequestID },
+    data: {
+      status: "COMPLETED",
+      mpesaReceiptNumber: callbackData.MpesaReceiptNumber,
+      settledAt: new Date()
+    }
+  });
+});
+```
+
+> [!TIP]
+> Always pair transaction updates with optimistic locking or database isolation levels to prevent race conditions during high-concurrency wallet top-ups.
+
+## 4. Real-Time Client Feedback with WebSockets
+
+A common UX pitfall is asking the user to click a "Check Payment Status" button repeatedly. In our modern client portals and mobile apps, we establish a lightweight WebSocket or Server-Sent Events (SSE) connection keyed by the `CheckoutRequestID`.
+
+As soon as the background worker commits the database transaction, an internal Pub/Sub event is broadcast:
+
+1. User submits phone number on checkout $\rightarrow$ App receives `CheckoutRequestID`.
+2. App opens WebSocket listener: `ws.subscribe("payment:" + checkoutRequestId)`.
+3. User enters M-Pesa PIN on their phone.
+4. Safaricom hits webhook $\rightarrow$ Worker records receipt $\rightarrow$ Pub/Sub triggers WebSocket broadcast.
+5. User's browser transitions to order confirmation instantly in **under 800ms**.
+
+## 5. Summary & Best Practices Checklist
+
+When engineering mission-critical payment workflows in East Africa:
+
+- **Always separate the listener from the processor**: Acknowledge webhooks in <50ms.
+- **Enforce idempotency**: Never process a payment without a unique database receipt constraint.
+- **Implement automated reconciliation**: Run a nightly cron job querying Daraja's Transaction Status API for any orders lingering in `PENDING` state.
+- **Monitor callback failure rates**: Set up automated Datadog or Sentry alerts when Daraja error codes exceed 2% of total traffic.
+
+By treating M-Pesa as an asynchronous distributed event system, your software will effortlessly handle enterprise payment volumes with zero financial discrepancies.

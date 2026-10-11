@@ -1,0 +1,251 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  STAFF
+  CLIENT
+}
+
+enum LeadStatus {
+  NEW
+  CONTACTED
+  QUALIFIED
+  PROPOSAL
+  WON
+  LOST
+}
+
+enum Currency {
+  KES
+  USD
+  CAD
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  passwordHash  String?
+  role          Role      @default(CLIENT)
+  emailVerified DateTime?
+  company       String?
+  phone         String?
+  createdAt     DateTime  @default(now())
+  
+  projects      Project[]
+  invoices      Invoice[]
+  tickets       Ticket[]
+}
+
+model Service {
+  id           String   @id @default(cuid())
+  slug         String   @unique
+  title        String
+  summary      String
+  intro        String   @db.Text
+  icon         String
+  deliverables String[]
+  faqs         Json
+  order        Int
+  published    Boolean  @default(true)
+  seoTitle     String?
+  seoDesc      String?
+}
+
+model Solution {
+  id        String   @id @default(cuid())
+  slug      String   @unique
+  title     String
+  blurb     String
+  body      String   @db.Text
+  modules   String[]
+  published Boolean  @default(true)
+}
+
+model Industry {
+  id        String   @id @default(cuid())
+  slug      String   @unique
+  title     String
+  blurb     String
+  body      String   @db.Text
+  published Boolean  @default(true)
+}
+
+model CaseStudy {
+  id            String   @id @default(cuid())
+  slug          String   @unique
+  title         String
+  client        String?
+  industryId    String?
+  year          Int
+  summary       String
+  body          String   @db.Text
+  cover         String
+  gallery       String[]
+  metrics       Json
+  tech          String[]
+  testimonialId String?
+  published     Boolean  @default(false)
+}
+
+model Post {
+  id          String    @id @default(cuid())
+  slug        String    @unique
+  title       String
+  excerpt     String
+  body        String    @db.Text
+  cover       String?
+  categoryId  String
+  authorId    String
+  tags        String[]
+  readingMins Int
+  publishedAt DateTime?
+  seoTitle    String?
+  seoDesc     String?
+}
+
+model Category {
+  id    String @id @default(cuid())
+  slug  String @unique
+  name  String
+  
+  posts Post[]
+}
+
+model Testimonial {
+  id       String  @id @default(cuid())
+  name     String
+  role     String
+  company  String
+  quote    String
+  rating   Int     @default(5)
+  avatar   String?
+  featured Boolean @default(false)
+}
+
+model TeamMember {
+  id    String @id @default(cuid())
+  name  String
+  title String
+  bio   String
+  photo String
+  order Int
+}
+
+model Plan {
+  id          String   @id @default(cuid())
+  slug        String   @unique
+  name        String
+  tagline     String
+  features    String[]
+  highlighted Boolean  @default(false)
+  prices      Json     // {KES:..,USD:..,CAD:..}
+  interval    String   // one-time | monthly
+  order       Int
+}
+
+model Lead {
+  id        String     @id @default(cuid())
+  name      String
+  company   String?
+  email     String
+  phone     String?
+  need      String
+  budget    String
+  message   String     @db.Text
+  status    LeadStatus @default(NEW)
+  source    String?
+  notes     String?
+  createdAt DateTime   @default(now())
+}
+
+model Consultation {
+  id       String   @id @default(cuid())
+  name     String
+  email    String
+  startsAt DateTime
+  topic    String?
+}
+
+model Subscriber {
+  id        String  @id @default(cuid())
+  email     String  @unique
+  confirmed Boolean @default(false)
+}
+
+model Job {
+  id           String        @id @default(cuid())
+  slug         String        @unique
+  title        String
+  type         String
+  location     String
+  description  String        @db.Text
+  requirements String[]
+  open         Boolean       @default(true)
+  
+  applications Application[]
+}
+
+model Application {
+  id        String   @id @default(cuid())
+  jobId     String
+  name      String
+  email     String
+  cvUrl     String
+  message   String?
+  createdAt DateTime @default(now())
+  
+  job       Job      @relation(fields: [jobId], references: [id])
+}
+
+model Project {
+  id         String    @id @default(cuid())
+  title      String
+  clientId   String
+  status     String
+  milestones Json
+  files      Json
+  updates    Json
+  startedAt  DateTime?
+  
+  client     User      @relation(fields: [clientId], references: [id])
+}
+
+model Invoice {
+  id           String    @id @default(cuid())
+  number       String    @unique
+  clientId     String
+  amount       Int
+  currency     Currency
+  status       String    // DRAFT|SENT|PAID|OVERDUE
+  dueAt        DateTime
+  paidAt       DateTime?
+  stripeId     String?
+  mpesaReceipt String?
+  
+  client       User      @relation(fields: [clientId], references: [id])
+}
+
+model Ticket {
+  id        String   @id @default(cuid())
+  subject   String
+  body      String   @db.Text
+  status    String   @default("OPEN")
+  userId    String
+  replies   Json
+  createdAt DateTime @default(now())
+  
+  user      User     @relation(fields: [userId], references: [id])
+}
+
+model Setting {
+  key   String @id
+  value Json
+}
