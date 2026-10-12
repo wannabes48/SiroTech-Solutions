@@ -45,7 +45,7 @@ export const services: Service[] = [
       { q: "What happens after launch?", a: "We provide a 30-day bug warranty alongside optional monthly retainer care plans for continuous improvements." },
     ],
     seoTitle: "Custom Software Development Studio Nairobi | SiroTech Solutions",
-    seoDesc: "Bespoke custom software engineering in Kenya, the US, and Canada. High-load resilience, full IP ownership, and zero legacy lock-in.",
+    seoDesc: "Bespoke custom software engineering in Kenya, East Africa, and the rest of the world. High-load resilience, full IP ownership, and zero legacy lock-in.",
   },
   {
     slug: "web-application-development",
@@ -77,7 +77,7 @@ export const services: Service[] = [
       { q: "Can we migrate our existing WordPress site to a Next.js web app?", a: "Absolutely. We specialize in migrating slow WordPress or legacy PHP sites into fast, modern Next.js architectures." },
     ],
     seoTitle: "Web Application Development in Kenya & North America | SiroTech",
-    seoDesc: "Fast, accessible Next.js web applications engineered for scale. Built in Nairobi, serving Kenya, US, and Canada.",
+    seoDesc: "Fast, accessible Next.js web applications engineered for scale. Built in Nairobi, serving Kenya, East Africa and the rest of the world.",
   },
   {
     slug: "mobile-apps",
@@ -168,7 +168,7 @@ export const services: Service[] = [
     relatedCaseStudySlug: "foresafe",
     faqs: [
       { q: "How does the M-Pesa STK push integration work?", a: "When the customer enters their phone number at checkout, an instant prompt appears on their phone requesting their M-Pesa PIN, confirming the order in seconds." },
-      { q: "Can we accept payments from customers in the US and Canada?", a: "Yes. We integrate Stripe so international buyers can pay securely via Visa, Mastercard, or Apple Pay." },
+      { q: "Can we accept payments from customers in the US and the rest of the world?", a: "Yes. We integrate Stripe so international buyers can pay securely via Visa, Mastercard, or Apple Pay." },
       { q: "How are inventory levels updated?", a: "Inventory is updated atomically on successful payment callbacks, preventing double-selling during flash sales." },
       { q: "Is customer data safe during checkout?", a: "Yes. Payment card data is processed directly via PCI-DSS compliant providers, ensuring no sensitive financial data touches your servers." },
     ],

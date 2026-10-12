@@ -30,7 +30,7 @@ export const studioTimeline: TimelineMilestone[] = [
   {
     year: "2024",
     title: "Cross-Border Delivery & Global Reach",
-    subtitle: "Serving growing startups in Kenya, the US, and Canada",
+    subtitle: "Serving growing startups in Kenya, East Africa, and the rest of the world",
     description: "Partnered with founders across North America who demanded engineering precision, time-zone adaptability, and cost-effective product execution without sacrificing senior expertise.",
     achievements: [
       "Launched 12 enterprise web and mobile applications",

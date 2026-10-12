@@ -17,8 +17,8 @@ export const siteStats: StatItem[] = [
     label: "Years building scalable software",
   },
   {
-    value: 3,
-    suffix: "",
-    label: "Countries served (Kenya, US, Canada)",
+    value: 7,
+    suffix: "+",
+    label: "Countries served (Kenya, East Africa, US & the rest of the world)",
   },
 ];

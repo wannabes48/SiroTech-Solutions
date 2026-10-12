@@ -39,7 +39,7 @@ export default function AboutSection() {
         {/* Sage rounded portrait panel */}
         <div className="w-full sm:w-4/5 h-[92%] bg-sage-100 rounded-[32px] relative overflow-hidden shadow-lg border border-sage-300/40">
           <img
-            src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=800"
+            src="https://files.ginistorage.com/Blogs/Files/Blog_101_1712498207705_Image.Creating_an_Organization_Wide_Innovation_Strategy_7827.png%7D"
             alt="Lead Engineer at SiroTech"
             className="w-full h-full object-cover object-top filter contrast-105"
           />
@@ -74,7 +74,7 @@ export default function AboutSection() {
             <span>Nairobi Studio</span>
           </div>
           <p className="text-xs font-semibold text-ink leading-snug">
-            Based in Nairobi · Serving Kenya, US and Canada
+            Based in Nairobi · Serving Kenya, East Africa and the rest of the world
           </p>
           <div className="flex items-center gap-1.5 text-[11px] text-muted pt-1 border-t border-rule">
             <Globe className="w-3 h-3 text-sage-500" />

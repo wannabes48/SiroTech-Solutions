@@ -103,8 +103,8 @@ export default async function ServiceDetailPage({
         },
         areaServed: [
           { "@type": "Country", name: "Kenya" },
-          { "@type": "Country", name: "United States" },
-          { "@type": "Country", name: "Canada" },
+          { "@type": "Country", name: "East Africa" },
+          { "@type": "Country", name: "US" },
         ],
       },
       {

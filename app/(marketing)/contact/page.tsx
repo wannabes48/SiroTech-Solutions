@@ -155,7 +155,7 @@ export default function ContactPage() {
                   <p className="text-sm font-semibold text-ink">
                     Monday – Friday: 8:00 AM – 6:00 PM EAT
                   </p>
-                  <p className="text-xs text-muted mt-0.5">Accommodating US &amp; Canada timezones</p>
+                  <p className="text-xs text-muted mt-0.5">Accommodating East Africa &amp; UTC timezones</p>
                 </div>
               </div>
             </div>

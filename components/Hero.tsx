@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { ArrowDown } from "lucide-react";
 import Navbar from "./Navbar";
-import { AvatarStack } from "./ui/AvatarStack";
 import KineticGrid from "./ui/kinetic-grid";
 
 export default function Hero() {
@@ -58,9 +57,6 @@ export default function Hero() {
                 Scalable, Smart IT <br className="hidden sm:inline" />
                 <span className="inline-flex items-center gap-3 sm:gap-4 mt-2 flex-wrap">
                   <span>Solutions</span>
-                  <span className="inline-flex align-middle">
-                    <AvatarStack size="md" />
-                  </span>
                 </span>
               </h1>
             </div>

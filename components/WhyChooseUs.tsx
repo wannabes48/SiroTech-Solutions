@@ -41,7 +41,7 @@ export default function WhyChooseUs() {
           <div className="flex-1 w-full">
             <div className="w-full aspect-[4/3] rounded-[32px] overflow-hidden relative shadow-lg border border-rule">
               <img
-                src="https://images.unsplash.com/photo-1522071820081-009f0129c71c?auto=format&fit=crop&q=80&w=800"
+                src="https://img.magnific.com/free-vector/coworkers-cartoon-characters-effective-collaboration-coworkers-cooperation-teamwork-colleagues-discussing-solution-successful-interaction_335657-2309.jpg?semt=ais_hybrid&w=740&q=80"
                 alt="SiroTech Engineering Team Collaboration"
                 className="w-full h-full object-cover"
               />

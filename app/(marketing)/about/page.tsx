@@ -6,7 +6,6 @@ import { StatBlock } from "@/components/shared/stat-block";
 import { siteStats } from "@/data/site-stats";
 import { studioValues } from "@/data/values";
 import { studioTimeline } from "@/data/timeline";
-import { TeamGrid } from "@/components/about/TeamGrid";
 import WhyChooseUs from "@/components/WhyChooseUs";
 import { CtaBand } from "@/components/ui/CtaBand";
 import {
@@ -110,7 +109,7 @@ export default function AboutPage() {
                 Having spent over a decade in architectural design before transitioning into computer science, our founder Daniel Siro noticed striking parallels between physical building failures and software outages—both stem from unexamined foundations, brittle dependencies, and rushing production without structural blueprints.
               </p>
               <p>
-                Today, SiroTech operates as an independent studio serving startups and enterprises across Kenya, the US, and Canada. We partner directly with technical leaders and non-technical founders to architect high-concurrency web applications, offline-first mobile tools, and intelligent AI workflows.
+                Today, SiroTech operates as an independent studio serving startups and enterprises across East Africa and the rest of the world. We partner directly with technical leaders and non-technical founders to architect high-concurrency web applications, offline-first mobile tools, and intelligent AI workflows.
               </p>
             </div>
 
@@ -129,7 +128,7 @@ export default function AboutPage() {
           <div className="lg:col-span-5">
             <div className="relative w-full aspect-[4/5] rounded-[32px] overflow-hidden bg-sage-100 border border-rule shadow-xl">
               <img
-                src="https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&q=80&w=800"
+                src="https://danielsiroportfolio.vercel.app/assets/profile-portrait-148fb244.webp"
                 alt="Portrait of Daniel Siro, Founder and Principal Solutions Architect"
                 className="w-full h-full object-cover object-top"
               />
@@ -244,15 +243,13 @@ export default function AboutPage() {
         </section>
 
         {/* 6. Team Grid with Bio Dialogs */}
-        <section>
+        {/*<section>
           <SectionHeader
             label="Senior Leadership"
             heading="The Engineers Behind Your Architecture"
             description="We are a senior-led product engineering collective. Click on any team member to view their technical background and skill matrix."
           />
-
-          <TeamGrid />
-        </section>
+        </section> */}
 
         {/* 7. Why Choose Us Reused Accordion */}
         <section className="-mx-6 lg:-mx-10">

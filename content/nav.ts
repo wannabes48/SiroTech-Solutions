@@ -13,6 +13,11 @@ export const navItems: NavItem[] = [
   { label: "About Us", href: "/about",
     children: [
       {
+        label: "Our Story",
+        href: "/about",
+        description: "Learn about our journey and values.",
+      },
+      {
         label: "Technologies We Use",
         href: "/technologies",
         description: "Overview of the technologies we use to build our solutions.",
