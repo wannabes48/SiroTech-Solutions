@@ -305,7 +305,7 @@ export default function Footer() {
           {/* Social Icons */}
           <div className="flex items-center gap-3">
             <a
-              href="https://wa.me/254700000000"
+              href="https://wa.me/254745131817"
               target="_blank"
               rel="noopener noreferrer"
               aria-label="WhatsApp"

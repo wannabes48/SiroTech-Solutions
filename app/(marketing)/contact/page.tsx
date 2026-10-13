@@ -26,7 +26,7 @@ const contactJsonLd = {
       name: "SiroTech Solutions",
       url: "https://sirotech.com",
       email: "hello@sirotech.com",
-      telephone: "+254700000000",
+      telephone: "+254745131817",
       priceRange: "$$",
       address: {
         "@type": "PostalAddress",
@@ -118,12 +118,12 @@ export default function ContactPage() {
                     Phone &amp; WhatsApp
                   </h3>
                   <a
-                    href="https://wa.me/254700000000"
+                    href="https://wa.me/254745131817"
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-base font-bold text-ink hover:text-sage-700 transition-colors"
                   >
-                    +254 (0) 700 000 000
+                    +254 (0) 745 131 817
                   </a>
                   <p className="text-xs text-muted mt-0.5">Available for WhatsApp messages &amp; calls</p>
                 </div>
@@ -138,9 +138,8 @@ export default function ContactPage() {
                     Nairobi Studio
                   </h3>
                   <p className="text-sm font-semibold text-ink leading-snug">
-                    The Mirage, Chiromo Road, Westlands
+                    Nairobi, Kenya
                   </p>
-                  <p className="text-xs text-muted mt-0.5">Nairobi, Kenya</p>
                 </div>
               </div>
 

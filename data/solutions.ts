@@ -503,11 +503,11 @@ export const solutions: Solution[] = [
     },
     screenshots: [
       {
-        url: "https://images.unsplash.com/photo-1508962914676-134849a727f0?auto=format&fit=crop&q=80&w=1200",
+        url: "https://cdn.dribbble.com/userupload/46894662/file/498f5aca8fbc77f9e8f39a02b496adf5.png?resize=752x&vertical=center",
         caption: "Bystander Instant Incident Dispatch Interface",
       },
       {
-        url: "https://images.unsplash.com/photo-1551288049-bebda4e38f71?auto=format&fit=crop&q=80&w=1200",
+        url: "https://cdn.dribbble.com/userupload/9247377/file/original-72ebc67c6e79f20753fc454967ea084d.png?resize=1024x768&vertical=center",
         caption: "Corporate Parking Facility Security Desk",
       },
     ],
@@ -598,7 +598,7 @@ export const solutions: Solution[] = [
     },
     screenshots: [
       {
-        url: "https://images.unsplash.com/photo-1522071820081-009f0129c71c?auto=format&fit=crop&q=80&w=1200",
+        url: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSWs2u1MOsevQYQ8zmTlKJhJn07-r_Tx7FShbdSTC5aUtXL41Bg6gdzcziv&s=10",
         caption: "Candidate Ranking & Blind Review Triage Board",
       },
       {

@@ -1,23 +1,8 @@
 import { NextResponse } from "next/server";
-import { z } from "zod";
+import { contactSchema } from "@/lib/validators";
 
 // Rate limiting in-memory cache: IP -> { count, expiresAt }
 const rateLimitMap = new Map<string, { count: number; expiresAt: number }>();
-
-const contactPayloadSchema = z.object({
-  name: z.string().min(2, "Name must be at least 2 characters"),
-  company: z.string().optional(),
-  email: z.string().email("Please enter a valid work email address"),
-  phone: z.string().optional(),
-  need: z.string().min(1, "Please select what you need"),
-  budget: z.string().min(1, "Please select an estimated budget"),
-  message: z.string().min(10, "Please provide at least 10 characters describing your project"),
-  consent: z.boolean().refine((val) => val === true, {
-    message: "You must consent to data processing to submit",
-  }),
-  website: z.string().optional(), // Honeypot field
-  turnstileToken: z.string().optional(),
-});
 
 export async function POST(request: Request) {
   try {
@@ -54,10 +39,13 @@ export async function POST(request: Request) {
 
     // 2. Parse body & Validate with Zod
     const rawBody = await request.json();
-    const parseResult = contactPayloadSchema.safeParse(rawBody);
+    const parseResult = contactSchema.safeParse(rawBody);
 
     if (!parseResult.success) {
-      const firstError = (parseResult.error as any).issues?.[0]?.message || (parseResult.error as any).errors?.[0]?.message || "Invalid submission data.";
+      const firstError =
+        (parseResult.error as any).issues?.[0]?.message ||
+        (parseResult.error as any).errors?.[0]?.message ||
+        "Invalid submission data.";
       return NextResponse.json({ error: firstError }, { status: 400 });
     }
 
@@ -111,7 +99,10 @@ export async function POST(request: Request) {
           need: data.need,
           budget: data.budget,
           message: data.message,
-          source: "contact_form",
+          source: data.source || "contact",
+          timeline: data.timeline || null,
+          siteUrl: data.url || null,
+          transcript: data.transcript ? (data.transcript as any) : null,
         },
       });
       await prisma.$disconnect();
@@ -122,12 +113,23 @@ export async function POST(request: Request) {
         company: data.company,
         need: data.need,
         budget: data.budget,
+        source: data.source,
+        timeline: data.timeline,
+        url: data.url,
+        transcriptLength: data.transcript?.length,
         timestamp: new Date().toISOString(),
       });
     }
 
     // 6. Notifications (Team alert & Auto-reply)
-    console.log(`[Email Dispatch] Team notification sent to hello@sirotech.com`);
+    const emailSubject =
+      data.source === "assistant"
+        ? `New enquiry via assistant: ${data.need}`
+        : `New engineering enquiry: ${data.need}`;
+    console.log(`[Email Dispatch] ${emailSubject} to hello@sirotech.com`);
+    if (data.transcript && data.transcript.length > 0) {
+      console.log(`[Email Attachment] Attached chat transcript (${data.transcript.length} turns)`);
+    }
     console.log(`[Auto-Reply Sent] Confirmation sent to client: ${data.email}`);
 
     return NextResponse.json({

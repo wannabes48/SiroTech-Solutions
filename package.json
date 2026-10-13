@@ -12,6 +12,7 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.133.0",
     "@hookform/resolvers": "^5.9.1",
     "@radix-ui/react-accordion": "^1.2.21",
     "@radix-ui/react-slot": "^1.4.0",
@@ -24,6 +25,7 @@
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "react-hook-form": "^7.89.0",
+    "react-markdown": "^10.1.0",
     "react-use-measure": "^2.1.7",
     "zod": "^4.6.5"
   },

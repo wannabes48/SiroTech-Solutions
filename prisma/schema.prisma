@@ -152,18 +152,21 @@ model Plan {
 }
 
 model Lead {
-  id        String     @id @default(cuid())
-  name      String
-  company   String?
-  email     String
-  phone     String?
-  need      String
-  budget    String
-  message   String     @db.Text
-  status    LeadStatus @default(NEW)
-  source    String?
-  notes     String?
-  createdAt DateTime   @default(now())
+  id         String     @id @default(cuid())
+  name       String
+  company    String?
+  email      String
+  phone      String?
+  need       String
+  budget     String
+  message    String     @db.Text
+  status     LeadStatus @default(NEW)
+  source     String?
+  timeline   String?
+  siteUrl    String?
+  transcript Json?
+  notes      String?
+  createdAt  DateTime   @default(now())
 }
 
 model Consultation {

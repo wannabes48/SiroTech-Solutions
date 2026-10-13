@@ -16,6 +16,8 @@ import {
   ArrowRight,
   ShieldCheck,
   Building2,
+  ExternalLink,
+  Globe,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -135,6 +137,30 @@ export default function AboutPage() {
                 <div className="text-xs text-sage-300 font-medium">Founder &amp; Lead Developer </div>
               </div>
             </div>
+
+            {/* External link to Daniel Siro's portfolio */}
+            <a
+              href="https://danielsiroportfolio.vercel.app/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-4 flex items-center justify-between p-4 rounded-2xl bg-surface border border-rule hover:border-emerald-600/60 hover:bg-emerald-50/40 hover:shadow-sm transition-all duration-300 group"
+            >
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-10 h-10 rounded-xl bg-sage-100 flex items-center justify-center text-sage-800 group-hover:bg-emerald-100 group-hover:text-emerald-700 transition-colors shrink-0">
+                  <Globe className="w-5 h-5" />
+                </div>
+                <div className="min-w-0">
+                  <div className="text-xs sm:text-sm font-bold text-ink group-hover:text-emerald-800 transition-colors flex items-center gap-1.5 truncate">
+                    <span>View Portfolio</span>
+                    <ExternalLink className="w-3.5 h-3.5 opacity-60 group-hover:opacity-100 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-all text-emerald-700 shrink-0" />
+                  </div>
+                </div>
+              </div>
+              <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-700 group-hover:text-emerald-800 shrink-0 ml-3">
+                <span>Visit</span>
+                <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
+              </span>
+            </a>
           </div>
         </section>
 

@@ -1,4 +1,5 @@
 import Footer from "@/components/layout/Footer";
+import AssistantWidget from "@/components/assistant/AssistantWidget";
 
 export default function MarketingLayout({
   children,
@@ -9,6 +10,7 @@ export default function MarketingLayout({
     <>
       {children}
       <Footer />
+      <AssistantWidget />
     </>
   );
 }

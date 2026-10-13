@@ -185,7 +185,7 @@ export default function FaqPage() {
                 <ArrowRight className="w-4 h-4" />
               </Link>
               <a
-                href="https://wa.me/254700000000?text=Hi%20SiroTech%20team,%20I%20have%20a%20question%20about%20your%20engineering%20services"
+                href="https://wa.me/254745131817?text=Hi%20SiroTech%20team,%20I%20have%20a%20question%20about%20your%20engineering%20services"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="px-6 py-3.5 rounded-full bg-sage-100 text-sage-900 text-xs font-bold uppercase tracking-wider hover:bg-sage-200 transition-colors inline-flex items-center gap-2"

@@ -96,7 +96,57 @@ export const navItems: NavItem[] = [
       },
     ],
   },
-  { label: "Industries", href: "/industries" },
+  { label: "Industries", href: "/industries",
+    children: [
+      {
+        label: "FinTech",
+        href: "/industries/financial",
+        description: "Payment systems, wallets, and financial operations platforms.",
+      },
+      {
+        label: "Retail & eCommerce",
+        href: "/industries/retail",
+        description: "E-commerce platforms, inventory management, and customer experience solutions.",
+      },
+      {
+        label: "HealthCare & HealthTech",
+        href: "/industries/healthcare",
+        description: "Digital solutions for healthcare, patient management, and medical operations.",
+      },
+      {
+        label: "AgriTech",
+        href: "/industries/agriculture",
+        description: "Digital solutions for agriculture, supply chain, and farm management.",
+      },
+      {
+        label: "EdTech",
+        href: "/industries/education",
+        description: "Learning management systems, online courses, and educational platforms.",
+      },
+      { label: "NGOs & Nonprofits", 
+        href: "/industries/ngos",
+        description: "Digital solutions for NGOs, nonprofits, and social impact organizations.",
+      },
+
+      {
+        label: "Logistics & Supply Chain",
+        href: "/industries/logistics",
+        description: "Digital solutions for logistics, transportation, and supply chain management.",
+      },
+
+      {
+        label: "Real Estate & Property Tech",
+        href: "/industries/real-estate",
+        description: "Digital solutions for real estate, property management, and proptech platforms.",
+      },
+
+      {
+        label: "Explore All Industries →",
+        href: "/industries",
+        description: "A comprehensive look at our industry-specific solutions.",
+      }
+    ],
+  },
   { label: "Work", href: "/work" },
   { label: "Pricing", href: "/pricing" },
   { label: "Blog", href: "/blog" },
