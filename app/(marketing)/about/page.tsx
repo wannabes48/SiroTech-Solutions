@@ -105,11 +105,9 @@ export default function AboutPage() {
               <p>
                 SiroTech was founded in Nairobi on a fundamental premise: modern software is often built like temporary scaffolding rather than permanent, load-bearing infrastructure.
               </p>
+              
               <p>
-                Having spent over a decade in architectural design before transitioning into computer science, our founder Daniel Siro noticed striking parallels between physical building failures and software outages—both stem from unexamined foundations, brittle dependencies, and rushing production without structural blueprints.
-              </p>
-              <p>
-                Today, SiroTech operates as an independent studio serving startups and enterprises across East Africa and the rest of the world. We partner directly with technical leaders and non-technical founders to architect high-concurrency web applications, offline-first mobile tools, and intelligent AI workflows.
+                SiroTech operates as an independent studio serving startups and enterprises across East Africa and the rest of the world. We partner directly with technical leaders and non-technical founders to architect high-concurrency web applications, offline-first mobile tools, and intelligent AI workflows.
               </p>
             </div>
 
@@ -134,7 +132,7 @@ export default function AboutPage() {
               />
               <div className="absolute inset-0 bg-gradient-to-t from-ink/70 via-transparent to-transparent flex flex-col justify-end p-8 text-white">
                 <div className="text-lg font-bold">Daniel Siro</div>
-                <div className="text-xs text-sage-300 font-medium">Founder &amp; Principal Architect</div>
+                <div className="text-xs text-sage-300 font-medium">Founder &amp; Lead Developer </div>
               </div>
             </div>
           </div>
@@ -208,7 +206,7 @@ export default function AboutPage() {
                 >
                   {/* Timeline dot / year on desktop */}
                   <div className="absolute -left-[17px] md:left-1/2 md:-translate-x-1/2 top-1.5 w-8 h-8 rounded-full bg-sage-300 border-4 border-bg flex items-center justify-center text-[10px] font-bold text-ink z-10 shadow-sm">
-                    {item.year.slice(2)}
+                    {item.year}
                   </div>
 
                   {/* Card Content */}

@@ -126,17 +126,17 @@ export default function Footer() {
               <div className="flex items-center gap-3">
                 <Phone className="w-4 h-4 text-sage-300 shrink-0" />
                 <a
-                  href="https://wa.me/254700000000"
+                  href="https://wa.me/254745131817"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="hover:text-white transition-colors"
                 >
-                  +254 (0) 700 000 000 (Call &amp; WhatsApp)
+                  +254 (0) 745 131 817 (Call &amp; WhatsApp)
                 </a>
               </div>
               <div className="flex items-start gap-3">
                 <MapPin className="w-4 h-4 text-sage-300 shrink-0 mt-0.5" />
-                <span>Nairobi, Kenya • The Mirage, Chiromo Road, Westlands</span>
+                <span>Nairobi, Kenya</span>
               </div>
             </div>
           </div>

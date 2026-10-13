@@ -76,7 +76,7 @@ export const testimonials: Testimonial[] = [
     country: "Nigeria / Global",
     quote:
       "SiroTech demonstrated extraordinary systems engineering on Stellar Soroban. Delivering a complete no-loss auction engine with flawless Rust smart contracts and an intuitive dApp within six weeks was a standout achievement across our entire cohort.",
-    rating: 5,
+    rating: 4.5,
     verified: true,
     projectSlug: "stellar-auction",
     source: {

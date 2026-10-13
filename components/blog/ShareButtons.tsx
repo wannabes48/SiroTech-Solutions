@@ -11,16 +11,16 @@ interface ShareButtonsProps {
 export function ShareButtons({ title, slug }: ShareButtonsProps) {
   const [copied, setCopied] = useState(false);
 
-  const url = typeof window !== "undefined"
-    ? `${window.location.origin}/blog/${slug}`
-    : `https://sirotech.com/blog/${slug}`;
-
-  const encodedUrl = encodeURIComponent(url);
+  // Canonical production URL is strictly deterministic between server SSR and client hydration
+  const canonicalUrl = `https://sirotech.com/blog/${slug}`;
+  const encodedUrl = encodeURIComponent(canonicalUrl);
   const encodedTitle = encodeURIComponent(title);
 
   const handleCopy = async () => {
     try {
-      await navigator.clipboard.writeText(url);
+      const urlToCopy =
+        typeof window !== "undefined" ? window.location.href : canonicalUrl;
+      await navigator.clipboard.writeText(urlToCopy);
       setCopied(true);
       setTimeout(() => setCopied(false), 2500);
     } catch (err) {

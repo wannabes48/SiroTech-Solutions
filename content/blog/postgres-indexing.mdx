@@ -1,0 +1,130 @@
+---
+title: "PostgreSQL Indexing & Sharding for High Concurrency: Managing 100k+ Transactions per Second"
+excerpt: "Deep-dive into PostgreSQL B-Tree, BRIN, and GIN indexing strategies, table partitioning, and connection pooling with PgBouncer under high-concurrency African FinTech workloads."
+date: "2026-09-28"
+category: "architecture"
+categoryLabel: "Database Architecture"
+tags: ["PostgreSQL", "Database", "Performance Tuning", "Indexing", "PgBouncer", "FinTech"]
+cover: "https://images.unsplash.com/photo-1558494949-ef010cbdcc31?auto=format&fit=crop&q=80&w=1200"
+author: "Kevin Mutua"
+authorRole: "Lead Backend Engineer"
+authorAvatar: "KM"
+featured: false
+---
+
+In financial services and transactional commerce, database queries cannot afford slow sequential scans. When a customer initiates a mobile money disbursement or an institutional trader submits a high-volume batch order, transaction isolation, latency, and throughput must remain rock solid under extreme concurrency.
+
+At SiroTech Solutions, PostgreSQL is our primary relational engine for mission-critical client databases. Over years of tuning production databases handling hundreds of millions of records, we have codified standard indexing, partitioning, and connection-pooling patterns that prevent database degradation under peak loads.
+
+## 1. Understanding Query Execution Plans: EXPLAIN ANALYZE Essentials
+
+Before adding any index to a production table, engineers must understand how the query planner navigates existing data structures. Never guess; always profile using `EXPLAIN (ANALYZE, BUFFERS)`:
+
+```sql
+EXPLAIN (ANALYZE, BUFFERS)
+SELECT id, amount, status, created_at
+FROM transactions
+WHERE account_id = 'acc_982471'
+  AND status = 'COMPLETED'
+  AND created_at >= NOW() - INTERVAL '30 days'
+ORDER BY created_at DESC
+LIMIT 50;
+```
+
+Look for two critical warning signs:
+1. **Seq Scan on Large Tables**: Scanning millions of disk blocks into buffer memory because no index satisfies the predicate.
+2. **High Shared Hit Buffers with High Filter Ratios**: Reading thousands of rows only to discard 99% of them in memory.
+
+## 2. Choosing the Right Index Type: B-Tree, BRIN, and Partial Indexes
+
+Standard B-Tree indexes are versatile, but they are not the only tool available. Depending on column cardinality and data distribution, alternative index types can yield 90% space savings and faster query execution:
+
+### B-Tree Indexes with Covering Columns (Index-Only Scans)
+By appending non-key columns using the `INCLUDE` clause, PostgreSQL can satisfy queries entirely from the index leaf pages without fetching the underlying table heap pages:
+
+```sql
+CREATE INDEX idx_transactions_account_status_covering
+ON transactions (account_id, status, created_at DESC)
+INCLUDE (amount, fee, reference);
+```
+
+### Partial Indexes for High-Skew Data
+In payment ledgers, 95% of transactions may have `status = 'COMPLETED'`, while only 5% are in `status = 'PENDING'` or `'RETRYING'`. Indexing the entire table wastefully bloats storage. Instead, use a partial index:
+
+```sql
+CREATE INDEX idx_transactions_pending_retry
+ON transactions (created_at)
+WHERE status IN ('PENDING', 'RETRYING');
+```
+
+This index is tiny (a few megabytes instead of gigabytes), fits entirely within fast L1/L2 CPU caches, and accelerates polling workers dramatically.
+
+### BRIN (Block Range Index) for Monotonic Time-Series Data
+For append-only audit tables and log archives with tens of millions of rows sorted by `created_at`, a standard B-Tree index can consume 15GB of disk space. A **BRIN index** achieves the same lookup performance using under 20MB:
+
+```sql
+CREATE INDEX idx_audit_logs_brin
+ON audit_logs USING BRIN (created_at)
+WITH (pages_per_range = 128);
+```
+
+## 3. High-Velocity Ledger Writes: Mitigating Index Bloat and Write Amplification
+
+Every index added to a table comes with an unavoidable write penalty. When you insert or update a row, every associated index on that table must also be updated.
+
+> [!WARNING]
+> Frequent updates on indexed columns trigger table bloat and write amplification. Enable **HOT (Heap-Only Tuples)** updates by setting appropriate table fillfactors (`WITH (fillfactor = 85)`), leaving space in data blocks for in-place tuple updates without modifying index pointers.
+
+```sql
+ALTER TABLE accounts SET (fillfactor = 80);
+VACUUM FULL accounts; -- Run during scheduled maintenance
+```
+
+## 4. Declarative Range Partitioning for High-Volume Transaction Logs
+
+When single tables exceed 100 million rows, standard autovacuum processes take hours, and index trees exceed available server RAM. 
+
+We solve this using **declarative range partitioning** by calendar month:
+
+```sql
+CREATE TABLE transaction_records (
+    id UUID NOT NULL,
+    account_id UUID NOT NULL,
+    amount NUMERIC(14, 2) NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL,
+    PRIMARY KEY (id, created_at)
+) PARTITION BY RANGE (created_at);
+
+-- Monthly partition slices
+CREATE TABLE transaction_records_2026_09
+PARTITION OF transaction_records
+FOR VALUES FROM ('2026-09-01') TO ('2026-10-01');
+
+CREATE TABLE transaction_records_2026_10
+PARTITION OF transaction_records
+FOR VALUES FROM ('2026-10-01') TO ('2026-11-01');
+```
+
+Partition pruning allows queries scoped to specific time windows to skip 90% of tables completely, dropping query execution times from seconds to single-digit milliseconds.
+
+## 5. Scaling Connection Pools with PgBouncer and Transaction-Mode Pooling
+
+PostgreSQL allocates a dedicated operating system process (consuming 5MB–10MB of private RAM) for every connected client socket. If your web app spawns 1,000 parallel workers, PostgreSQL will consume 10GB of RAM just managing connection overhead!
+
+We place **PgBouncer** in front of every production database in `transaction` pool mode:
+
+```ini
+[databases]
+core_ledger = host=127.0.0.1 port=5432 dbname=core_ledger
+
+[pgbouncer]
+listen_port = 6432
+listen_addr = *
+auth_type = scram-sha-256
+pool_mode = transaction
+max_client_conn = 10000
+default_pool_size = 35
+reserve_pool_size = 5
+```
+
+In transaction pooling mode, a single server connection is returned to the pool the exact millisecond a SQL transaction completes, allowing 5,000 active web sessions to be served reliably by just 35 underlying PostgreSQL backend connections.

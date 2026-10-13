@@ -1,0 +1,119 @@
+---
+title: "Building Offline-First Mobile Apps with React Native: SQLite, CRDTs, and Background Sync"
+excerpt: "Engineering resilient mobile applications for low-connectivity environments across East Africa using React Native, local SQLite embedded storage, and optimistic state synchronization."
+date: "2026-09-15"
+category: "mobile"
+categoryLabel: "Mobile & Systems"
+tags: ["Mobile", "React Native", "SQLite", "Offline-First", "Expo", "WatermelonDB"]
+cover: "https://images.unsplash.com/photo-1512941937669-90a1b58e7e9c?auto=format&fit=crop&q=80&w=1200"
+author: "Faith Chebet"
+authorRole: "Senior Mobile Engineer"
+authorAvatar: "FC"
+featured: false
+---
+
+Building mobile applications for emerging markets presents distinct infrastructure challenges that Western developers rarely encounter. In rural Kenya, cellular connectivity is not merely slow—it is intermittent, unpredictable, and frequently nonexistent.
+
+Whether inspecting agricultural harvests in Kericho, checking fleet telemetry in subterranean basements, or logging clinical immunizations in remote dispensaries, mobile applications must treat the local device storage as the single source of truth.
+
+In this deep dive, we break down SiroTech's production architecture for building offline-first React Native applications using embedded SQLite, mutation queues, and conflict-free synchronization protocols.
+
+## 1. The Challenge of Unreliable Cellular Networks in Field Operations
+
+Many mobile development teams attempt to solve offline usability using standard HTTP caching libraries like React Query or RTK Query. While cache-first libraries work well for read-heavy content like news feeds, they fail catastrophically for **write operations**:
+
+- If an agricultural officer records 40 produce weigh-ins while offline, in-memory mutation queues will be wiped clean if the Android OS terminates the app in the background to reclaim memory.
+- Sequential mutation retries often execute out of order upon reconnecting to unstable 3G networks, triggering foreign key violation errors and corrupted ledger entries.
+- Uncoordinated concurrent edits across multiple mobile devices lead to silent overwrites and irrecoverable data loss.
+
+> [!NOTE]
+> Offline-first is not a caching strategy; it is a distributed systems database architecture. The local embedded database is your primary store, and the cloud backend is a synchronization replica.
+
+## 2. Embedded Database Architecture: SQLite & WatermelonDB
+
+We rely on native SQLite bindings (such as `op-sqlite` or `expo-sqlite`) with normalized relational tables mirrored from our cloud PostgreSQL schema. Every table incorporates synchronization metadata columns:
+
+```sql
+CREATE TABLE field_inspections (
+  id TEXT PRIMARY KEY NOT NULL,
+  operator_id TEXT NOT NULL,
+  facility_id TEXT NOT NULL,
+  payload_json TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  sync_status TEXT DEFAULT 'PENDING', -- 'PENDING', 'SYNCED', 'CONFLICT'
+  version INTEGER DEFAULT 1,
+  client_updated_at INTEGER NOT NULL
+);
+
+CREATE INDEX idx_inspections_sync ON field_inspections (sync_status, created_at);
+```
+
+Every user tap or form submission writes directly and synchronously to the local SQLite database. The user interface updates instantaneously with **0ms perceived latency**, ensuring field workers experience a fluid, native application regardless of cell coverage.
+
+## 3. Optimistic UI Updates and Mutation Queuing
+
+When an operator saves an inspection record or updates inventory, the local UI transitions immediately into a saved state while appending an entry to a persistent SQLite `outbox_mutations` queue:
+
+```typescript
+// services/sync/mutationQueue.ts
+export async function queueMutation(
+  db: SQLiteDatabase,
+  table: string,
+  recordId: string,
+  action: "INSERT" | "UPDATE" | "DELETE",
+  payload: Record<string, unknown>
+) {
+  await db.runAsync(
+    `INSERT INTO outbox_mutations (id, entity_table, entity_id, action, payload, queued_at)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    [
+      crypto.randomUUID(),
+      table,
+      recordId,
+      action,
+      JSON.stringify(payload),
+      Date.now(),
+    ]
+  );
+}
+```
+
+By persisting mutations to durable SQLite storage rather than in-memory states, data is guaranteed to survive sudden phone shutdowns, low-battery OS kills, or app restarts.
+
+## 4. Conflict Resolution Strategies: Last-Write-Wins vs. CRDTs
+
+When multiple agents modify shared records simultaneously while offline, conflicts inevitably arise upon reconnection. Depending on business criticality, we employ two deterministic strategies:
+
+1. **Last-Write-Wins (LWW) with Monotonic Clocks**: For non-financial status updates (e.g., updating a driver's availability), we compare server and client monotonic timestamps. The record with the later verified timestamp wins.
+2. **Conflict-Free Replicated Data Types (CRDTs)**: For critical ledger calculations, inventory counts, or checklist items, mutations are stored as commutative delta operations (e.g., `+5 units` instead of `set units = 45`), allowing operations to be applied in any arrival sequence without divergence.
+
+## 5. Resilient Background Synchronization with Exponential Backoff
+
+When network connectivity is restored (monitored via `@react-native-community/netinfo`), a background sync worker processes pending mutations in strict transactional batches:
+
+```typescript
+// services/sync/syncEngine.ts
+export async function runBackgroundSync(db: SQLiteDatabase) {
+  const pending = await db.getAllAsync(
+    "SELECT * FROM outbox_mutations ORDER BY queued_at ASC LIMIT 50"
+  );
+
+  if (pending.length === 0) return;
+
+  try {
+    const response = await api.post("/api/sync/batch", { mutations: pending });
+
+    if (response.data.success) {
+      await db.runAsync(
+        `DELETE FROM outbox_mutations WHERE id IN (${pending.map(() => "?").join(",")})`,
+        pending.map((p) => p.id)
+      );
+    }
+  } catch (error) {
+    // Implement jittered exponential backoff
+    console.warn("Sync failed, retrying in next backoff window:", error);
+  }
+}
+```
+
+With this architecture, mobile field teams across logistics, healthcare, and agriculture can work completely off-grid for days at a time with 100% data durability and guaranteed cloud reconciliation upon reconnection.

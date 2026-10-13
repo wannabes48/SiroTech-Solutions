@@ -5,9 +5,9 @@ import { SectionHeader } from "./ui/SectionHeader";
 import { ArrowRight } from "lucide-react";
 
 const images = [
-  "https://images.unsplash.com/photo-1551288049-bebda4e38f71?auto=format&fit=crop&q=80&w=800",
-  "https://images.unsplash.com/photo-1460925895917-afdab827c52f?auto=format&fit=crop&q=80&w=800",
-  "https://images.unsplash.com/photo-1540350394557-8d14678e7f91?auto=format&fit=crop&q=80&w=800",
+  "/projects/trav-tatz/screen-1.png",
+  "/projects/coastlane/screen-1.png",
+  "/projects/foresafe/screen-1.png",
 ];
 
 export default function WorkShowcase() {

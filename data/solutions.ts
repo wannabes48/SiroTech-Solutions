@@ -112,11 +112,11 @@ export const solutions: Solution[] = [
     },
     screenshots: [
       {
-        url: "https://images.unsplash.com/photo-1551288049-bebda4e38f71?auto=format&fit=crop&q=80&w=1200",
+        url: "https://cdn.prod.website-files.com/6442daaa63f3c26af529063d/648358f12b66f149d375de5f_Home-hero-app-wide%402x.png",
         caption: "Central Financial General Ledger & Cash Flow Monitor",
       },
       {
-        url: "https://images.unsplash.com/photo-1460925895917-afdab827c52f?auto=format&fit=crop&q=80&w=1200",
+        url: "https://cdn.dribbble.com/userupload/45457923/file/69de9bbfdee353bcfd22ae85dae193aa.png",
         caption: "Multi-Warehouse Inventory Stock Balancing Grid",
       },
     ],
@@ -215,11 +215,11 @@ export const solutions: Solution[] = [
     },
     screenshots: [
       {
-        url: "https://images.unsplash.com/photo-1551836022-d5d88e9218df?auto=format&fit=crop&q=80&w=1200",
+        url: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSlIfp4zxnkYLAT1SdR9-Z2AbWJT3UlDUrLKdWiIBYNIn9pTf4cI9qCeI2h&s=10",
         caption: "Client Interactive Workspace & Milestone Tracking View",
       },
       {
-        url: "https://images.unsplash.com/photo-1508962914676-134849a727f0?auto=format&fit=crop&q=80&w=1200",
+        url: "https://www.strongdm.com/hubfs/Imported_Blog_Media/60a544d01c3e8a40948bdfb3_audittrail-audit-log-network-security-3.jpeg",
         caption: "Encrypted Document Sharing & Activity Audit Log",
       },
     ],
@@ -312,11 +312,11 @@ export const solutions: Solution[] = [
     },
     screenshots: [
       {
-        url: "https://images.unsplash.com/photo-1563986768609-322da13575f3?auto=format&fit=crop&q=80&w=1200",
+        url: "https://www.golimelight.com/hubfs/2026%20Images/Budgeting%20%26%20Forecasting-svg.svg",
         caption: "Live Financial Settlement Queue & Callback Stream",
       },
       {
-        url: "https://images.unsplash.com/photo-1551288049-bebda4e38f71?auto=format&fit=crop&q=80&w=1200",
+        url: "https://images.volopay.com/5kqkjqwu0jdduc3zsx2xnu9zph06",
         caption: "Maker-Checker Bulk Disbursement Approval Desk",
       },
     ],
@@ -407,11 +407,11 @@ export const solutions: Solution[] = [
     },
     screenshots: [
       {
-        url: "https://images.unsplash.com/photo-1549317661-bd32c8ce0db2?auto=format&fit=crop&q=80&w=1200",
+        url: "https://cdn.dribbble.com/userupload/29666812/file/original-86a7ed6c140751a412e9cab22b8a9c62.jpg?resize=1504x1128&vertical=center",
         caption: "Field Agent Offline Produce Ingestion Interface",
       },
       {
-        url: "https://images.unsplash.com/photo-1460925895917-afdab827c52f?auto=format&fit=crop&q=80&w=1200",
+        url: "https://mir-s3-cdn-cf.behance.net/project_modules/1400_webp/297987207317495.66db25d7d504d.png",
         caption: "Harvest Yield & Smallholder Payout Analytics",
       },
     ],

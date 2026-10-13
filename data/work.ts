@@ -9,7 +9,7 @@ export interface CaseStudy {
   year: number;
   weeks?: number;
   duration: string;
-  buildType: "Production" | "Demo" | "Concept" | "Hackathon MVP" | "Tesnet Deployment";
+  buildType: "Production" | "Demo" | "Concept" | "Hackathon MVP" | "Testnet Deployment";
   tagline: string;
   summary: string;
   heroBgColor: string;
@@ -53,7 +53,7 @@ export interface CaseStudy {
 export const work: CaseStudy[] = [
   {
     slug: "trav-tatz",
-    title: "Trav-Tatz",
+    title: "Desinks Studio",
     client: "Trav-Tatz Studio", // TODO confirm
     industry: "Beauty / Tattoo",
     industrySlug: "beauty",
@@ -123,6 +123,82 @@ export const work: CaseStudy[] = [
     liveUrl: "https://www.browinkconnect.com/",
     repoUrl: null,
     prevProjectSlug: null,
+    nextProjectSlug: "foresafe",
+  },
+
+  // ───────────────────────── 10. COASTLANE MOTORS ─────────────────────────
+  {
+    slug: "coastlane-motors",
+    title: "Coastlane Motors",
+    client: "Coastlane Motors",
+    industry: "Automotive / Retail",
+    industrySlug: "automotive",
+    serviceSlug: "web-development",
+    serviceTitle: "Web Application Development",
+    year: 2026,
+    weeks: 4, // TODO
+    duration: "4 Weeks",
+    buildType: "Production",
+    tagline: "Used & New Car Dealership Website",
+    summary:
+      "A clean, user-friendly dealership site with Used and New inventory tabs, WhatsApp contact on every listing, and an admin panel for uploading vehicles.",
+    heroBgColor: "bg-[#dcebf7]",
+    accentColor: "text-sky-800",
+    metrics: [
+      { value: "2", label: "Inventory sections", detail: "Used and New" },
+      { value: "1-tap", label: "WhatsApp enquiry", detail: "Direct contact link on every listing" },
+      { value: "0", label: "Online purchases required", detail: "Enquiry-led sales model" },
+      { value: "3", label: "Managed services", detail: "Cloudinary, Supabase, Resend" },
+    ],
+    challenge: {
+      headline: "Dealerships need a simple, trustworthy showroom online without complex e-commerce.",
+      description:
+        "East African car buyers prefer to enquire over WhatsApp or phone. The dealer needs to add stock easily and present it attractively.",
+      points: [
+        "Buyers want photos, price and quick contact, not a checkout.",
+        "Staff need to publish new cars without developer help.",
+        "Design should feel modern and marketplace-like.",
+      ],
+    },
+    approach: {
+      headline: "Marketplace-style browsing with an enquiry-first listing model.",
+      description:
+        "SiroTech built the design from a locked marketplace reference: a pale sky-blue field, a full-bleed hero with overlapping search bar, a brands row and a category rail.",
+      points: [
+        "Each listing carries photos, price, description, WhatsApp link and phone number.",
+        "Admin panel lets staff upload vehicles with full details.",
+        "Delivered a full build guide covering everything through SEO.",
+      ],
+    },
+    solution: {
+      headline: "A fast, manageable showroom for East African buyers.",
+      description:
+        "Visitors browse Used and New inventory and contact the dealer instantly, while admins manage stock from a dedicated panel.",
+      architectureOverview:
+        "Supabase for the database, Cloudinary for image delivery, and Resend for email where needed.",
+      features: [
+        { title: "Used & New Tabs", description: "Separate inventory sections for easy browsing." },
+        { title: "WhatsApp Contact", description: "One-tap enquiry on every vehicle." },
+        { title: "Admin Upload Panel", description: "Staff add cars, photos and details themselves." },
+        { title: "Search & Category Rail", description: "Hero search bar and brands row for quick discovery." },
+      ],
+    },
+    gallery: [
+      { url: "/projects/coastlane/screen-1.png", caption: "Homepage Hero with Search", tag: "Homepage" }, // TODO
+      { url: "/projects/coastlane/screen-2.png", caption: "Vehicle Listing", tag: "Listings" },
+      { url: "/projects/coastlane/screen-3.png", caption: "Admin Upload Panel", tag: "Admin" },
+    ],
+    technologies: ["Supabase", "Cloudinary", "Resend", "Next.js", "Tailwind CSS"],
+    deliverables: ["Full build guide through SEO", "Used and New inventory pages", "Admin vehicle upload panel", "WhatsApp contact integration"],
+    testimonial: {
+      quote: "SiroTech delivered a clean, fast, and user-friendly dealership site that has significantly improved our online presence and customer engagement.",
+      author: "Brian Osano",
+      role: "Owner and CEO",
+      company: "Coastlane Motors"
+    },
+    liveUrl: "https://coastlanemotors.com/",
+    repoUrl: null,
+    prevProjectSlug: "trav-tatz",
     nextProjectSlug: "foresafe",
   },
 
@@ -220,19 +296,9 @@ export const work: CaseStudy[] = [
     },
     gallery: [
       {
-        url: "https://images.unsplash.com/photo-1549317661-bd32c8ce0db2?auto=format&fit=crop&q=80&w=1200",
+        url: "/projects/foresafe/screen-1.png",
         caption: "Bystander Zero-Download Scanner Interface on Mobile PWA",
         tag: "Mobile Web App",
-      },
-      {
-        url: "https://images.unsplash.com/photo-1508962914676-134849a727f0?auto=format&fit=crop&q=80&w=1200",
-        caption: "Commercial Parking Facility Operator Monitoring Console",
-        tag: "Operator Dashboard",
-      },
-      {
-        url: "https://images.unsplash.com/photo-1551288049-bebda4e38f71?auto=format&fit=crop&q=80&w=1200",
-        caption: "Tokenized Edge Notification Routing Architecture",
-        tag: "System Architecture",
       },
     ],
     technologies: [
@@ -259,7 +325,7 @@ export const work: CaseStudy[] = [
       role: "Founder & CEO",
       company: "Foresafe Mobility",
     },
-    prevProjectSlug: "trav-tatz",
+    prevProjectSlug: "coastlane-motors",
     nextProjectSlug: "mizani",
   },
 
@@ -578,84 +644,10 @@ export const work: CaseStudy[] = [
     deliverables: ["Passenger and rider mobile app", "Django backend with M-Pesa services", "Custom Firestore security rules", "Flutter rebuild specification", "Visual architecture diagrams"],
     testimonial: null,
     prevProjectSlug: "quickquote-pro",
-    nextProjectSlug: "coastlane-motors",
-  },
- 
-  // ───────────────────────── 10. COASTLANE MOTORS ─────────────────────────
-  {
-    slug: "coastlane-motors",
-    title: "Coastlane Motors",
-    client: "Coastlane Motors",
-    industry: "Automotive / Retail",
-    industrySlug: "automotive",
-    serviceSlug: "web-development",
-    serviceTitle: "Web Application Development",
-    year: 2026,
-    weeks: 4, // TODO
-    duration: "4 Weeks",
-    buildType: "Production",
-    tagline: "Used & New Car Dealership Website",
-    summary:
-      "A clean, user-friendly dealership site with Used and New inventory tabs, WhatsApp contact on every listing, and an admin panel for uploading vehicles.",
-    heroBgColor: "bg-[#dcebf7]",
-    accentColor: "text-sky-800",
-    metrics: [
-      { value: "2", label: "Inventory sections", detail: "Used and New" },
-      { value: "1-tap", label: "WhatsApp enquiry", detail: "Direct contact link on every listing" },
-      { value: "0", label: "Online purchases required", detail: "Enquiry-led sales model" },
-      { value: "3", label: "Managed services", detail: "Cloudinary, Supabase, Resend" },
-    ],
-    challenge: {
-      headline: "Dealerships need a simple, trustworthy showroom online without complex e-commerce.",
-      description:
-        "East African car buyers prefer to enquire over WhatsApp or phone. The dealer needs to add stock easily and present it attractively.",
-      points: [
-        "Buyers want photos, price and quick contact, not a checkout.",
-        "Staff need to publish new cars without developer help.",
-        "Design should feel modern and marketplace-like.",
-      ],
-    },
-    approach: {
-      headline: "Marketplace-style browsing with an enquiry-first listing model.",
-      description:
-        "SiroTech built the design from a locked marketplace reference: a pale sky-blue field, a full-bleed hero with overlapping search bar, a brands row and a category rail.",
-      points: [
-        "Each listing carries photos, price, description, WhatsApp link and phone number.",
-        "Admin panel lets staff upload vehicles with full details.",
-        "Delivered a full build guide covering everything through SEO.",
-      ],
-    },
-    solution: {
-      headline: "A fast, manageable showroom for East African buyers.",
-      description:
-        "Visitors browse Used and New inventory and contact the dealer instantly, while admins manage stock from a dedicated panel.",
-      architectureOverview:
-        "Supabase for the database, Cloudinary for image delivery, and Resend for email where needed.",
-      features: [
-        { title: "Used & New Tabs", description: "Separate inventory sections for easy browsing." },
-        { title: "WhatsApp Contact", description: "One-tap enquiry on every vehicle." },
-        { title: "Admin Upload Panel", description: "Staff add cars, photos and details themselves." },
-        { title: "Search & Category Rail", description: "Hero search bar and brands row for quick discovery." },
-      ],
-    },
-    gallery: [
-      { url: "/projects/coastlane/screen-1.jpg", caption: "Homepage Hero with Search", tag: "Homepage" }, // TODO
-      { url: "/projects/coastlane/screen-2.jpg", caption: "Vehicle Listing", tag: "Listings" },
-      { url: "/projects/coastlane/screen-3.jpg", caption: "Admin Upload Panel", tag: "Admin" },
-    ],
-    technologies: ["Supabase", "Cloudinary", "Resend", "Next.js", "Tailwind CSS"],
-    deliverables: ["Full build guide through SEO", "Used and New inventory pages", "Admin vehicle upload panel", "WhatsApp contact integration"],
-    testimonial: {
-      quote: "SiroTech delivered a clean, fast, and user-friendly dealership site that has significantly improved our online presence and customer engagement.",
-      author: "Brian Osano",
-      role: "Owner and CEO",
-      company: "Coastlane Motors"
-    },
-    liveUrl: "https://coastlanemotors.com/",
-    repoUrl: null,
-    prevProjectSlug: "varsity-boda",
     nextProjectSlug: "rapidrecruit",
   },
+ 
+  
 
   // ───────────────────────── 9. RAPIDRECRUIT ─────────────────────────
   {
@@ -733,7 +725,7 @@ export const work: CaseStudy[] = [
     },
     gallery: [
       {
-        url: "https://images.unsplash.com/photo-1586281380349-632531db7ed4?auto=format&fit=crop&q=80&w=1200",
+        url: "https://images.klipfolio.com/website/public/15be71ba-3e08-4ccb-8b75-ce05b1832fb6/w=1473",
         caption: "Recruiter Dashboard and Candidate Ranking",
         tag: "Streamlit UI",
       }
@@ -970,6 +962,8 @@ export const work: CaseStudy[] = [
     nextProjectSlug: "certchain"
   },
 
+  // ───────────────────────── 12. CERTCHAIN ─────────────────────────
+
   {
     slug: "certchain",
     title: "CertChain",
@@ -1108,7 +1102,7 @@ export const work: CaseStudy[] = [
     nextProjectSlug: "intellidebt",
   },
 
-
+  // ───────────────────────── 12. INTELLIDEBT ─────────────────────────
   {
     slug: "intellidebt",
     title: "IntelliDebt",

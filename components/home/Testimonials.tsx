@@ -6,23 +6,23 @@ import { SectionHeader } from "@/components/ui/SectionHeader";
 
 const testimonials = [
   {
-    name: "Sarah Jenkins",
+    name: "Keri Handla",
     role: "CTO",
-    company: "FinBridge Global",
+    company: "Certchain Group",
     quote: "SiroTech engineered our payment routing platform flawlessly. The architectural rigor they brought allowed us to scale beyond 100,000 daily transactions without latency degradation.",
     rating: 5,
   },
   {
     name: "David Ochieng",
     role: "Co-Founder",
-    company: "AgriTrack Africa",
+    company: "SmartStack Africa",
     quote: "Working with their team was an absolute breath of fresh air. They didn't just write clean TypeScript; they helped design our offline-first data sync engine for rural farmers.",
     rating: 5,
   },
   {
-    name: "Marcus Thorne",
+    name: "Morris Mwangi",
     role: "Director of Technology",
-    company: "MedLink Health",
+    company: "Mizani KE",
     quote: "Security and HIPAA compliance were our biggest blockers. SiroTech architected a rock-solid patient portal that passed all compliance audits on the very first submission.",
     rating: 5,
   },

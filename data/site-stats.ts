@@ -12,7 +12,7 @@ export const siteStats: StatItem[] = [
     label: "Production projects shipped & deployed",
   },
   {
-    value: 6,
+    value: 5,
     suffix: "+",
     label: "Years building scalable software",
   },

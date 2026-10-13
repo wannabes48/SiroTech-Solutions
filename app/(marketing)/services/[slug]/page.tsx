@@ -315,7 +315,7 @@ export default async function ServiceDetailPage({
               <div className="lg:col-span-7">
                 <div className="w-full aspect-[16/9] rounded-2xl overflow-hidden bg-surface border border-rule">
                   <img
-                    src="https://images.unsplash.com/photo-1551288049-bebda4e38f71?auto=format&fit=crop&q=80&w=800"
+                    src="https://cdn.searchenginejournal.com/wp-content/uploads/2019/08/how-to-write-a-killer-case-study-that-converts-clients.png"
                     alt={relatedCaseStudy.title}
                     className="w-full h-full object-cover"
                   />
