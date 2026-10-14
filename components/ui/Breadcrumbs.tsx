@@ -1,4 +1,4 @@
-import React from "react";
+﻿import React from "react";
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 
@@ -10,7 +10,7 @@ export interface BreadcrumbItem {
 export function Breadcrumbs({
   items,
   className = "",
-  baseUrl = "https://sirotech.com",
+  baseUrl = "https://sirotech.vercel.app",
 }: {
   items: BreadcrumbItem[];
   className?: string;

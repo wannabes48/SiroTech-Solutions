@@ -1,4 +1,4 @@
-import { notFound } from "next/navigation";
+﻿import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import Link from "next/link";
 import Navbar from "@/components/Navbar";
@@ -93,13 +93,13 @@ export default async function ServiceDetailPage({
     "@graph": [
       {
         "@type": "Service",
-        "@id": `https://sirotech.com/services/${service.slug}#service`,
+        "@id": `https://sirotech.vercel.app/services/${service.slug}#service`,
         name: service.title,
         description: service.summary,
         provider: {
           "@type": "Organization",
           name: "SiroTech Solutions",
-          url: "https://sirotech.com",
+          url: "https://sirotech.vercel.app",
         },
         areaServed: [
           { "@type": "Country", name: "Kenya" },
@@ -109,7 +109,7 @@ export default async function ServiceDetailPage({
       },
       {
         "@type": "FAQPage",
-        "@id": `https://sirotech.com/services/${service.slug}#faq`,
+        "@id": `https://sirotech.vercel.app/services/${service.slug}#faq`,
         mainEntity: service.faqs.map((faq) => ({
           "@type": "Question",
           name: faq.q,

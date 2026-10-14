@@ -1,4 +1,4 @@
-import { Suspense } from "react";
+﻿import { Suspense } from "react";
 import type { Metadata } from "next";
 import Navbar from "@/components/Navbar";
 import { ContactForm } from "@/components/contact/ContactForm";
@@ -15,16 +15,16 @@ const contactJsonLd = {
   "@graph": [
     {
       "@type": "ContactPage",
-      "@id": "https://sirotech.com/contact/#webpage",
-      url: "https://sirotech.com/contact",
+      "@id": "https://sirotech.vercel.app/contact/#webpage",
+      url: "https://sirotech.vercel.app/contact",
       name: "Contact SiroTech Solutions",
       description: "Submit a project brief or schedule an engineering consultation.",
     },
     {
       "@type": "ProfessionalService",
-      "@id": "https://sirotech.com/#organization",
+      "@id": "https://sirotech.vercel.app/#organization",
       name: "SiroTech Solutions",
-      url: "https://sirotech.com",
+      url: "https://sirotech.vercel.app",
       email: "hello@sirotech.com",
       telephone: "+254745131817",
       priceRange: "$$",

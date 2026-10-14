@@ -34,7 +34,7 @@ export const metadata: Metadata = {
     title: "Careers at SiroTech Solutions | Software Engineering Studio",
     description:
       "High autonomy, competitive compensation, top-tier hardware, and zero corporate fluff. Explore open engineering roles.",
-    url: "https://sirotech.com/careers",
+    url: "https://sirotech.vercel.app/careers",
   },
 };
 
@@ -57,11 +57,11 @@ export default function CareersIndexPage() {
     "@graph": [
       {
         "@type": "WebPage",
-        "@id": "https://sirotech.com/careers#webpage",
+        "@id": "https://sirotech.vercel.app/careers#webpage",
         name: "Careers at SiroTech Solutions",
         description:
           "Open engineering positions, culture, and benefits at SiroTech Solutions in Nairobi, Kenya.",
-        url: "https://sirotech.com/careers",
+        url: "https://sirotech.vercel.app/careers",
       },
       {
         "@type": "BreadcrumbList",
@@ -70,13 +70,13 @@ export default function CareersIndexPage() {
             "@type": "ListItem",
             position: 1,
             name: "Home",
-            item: "https://sirotech.com",
+            item: "https://sirotech.vercel.app",
           },
           {
             "@type": "ListItem",
             position: 2,
             name: "Careers",
-            item: "https://sirotech.com/careers",
+            item: "https://sirotech.vercel.app/careers",
           },
         ],
       },

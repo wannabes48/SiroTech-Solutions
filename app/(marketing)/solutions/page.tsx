@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+﻿import type { Metadata } from "next";
 import Link from "next/link";
 import Navbar from "@/components/Navbar";
 import { Container } from "@/components/ui/Container";
@@ -25,7 +25,7 @@ export const metadata: Metadata = {
     title: "Productised Solutions & Architecture Engines | SiroTech",
     description:
       "Accelerate your deployment timeline by 60% with pre-engineered enterprise software cores.",
-    url: "https://sirotech.com/solutions",
+    url: "https://sirotech.vercel.app/solutions",
   },
 };
 
@@ -37,15 +37,15 @@ export default async function SolutionsIndexPage() {
     "@graph": [
       {
         "@type": "CollectionPage",
-        "@id": "https://sirotech.com/solutions#page",
+        "@id": "https://sirotech.vercel.app/solutions#page",
         name: "Productised Software Solutions | SiroTech Solutions",
         description:
           "Pre-architected digital engines delivering rapid time-to-market without compromising code quality.",
-        url: "https://sirotech.com/solutions",
+        url: "https://sirotech.vercel.app/solutions",
         isPartOf: {
           "@type": "WebSite",
           name: "SiroTech Solutions",
-          url: "https://sirotech.com",
+          url: "https://sirotech.vercel.app",
         },
       },
       {
@@ -55,13 +55,13 @@ export default async function SolutionsIndexPage() {
             "@type": "ListItem",
             position: 1,
             name: "Home",
-            item: "https://sirotech.com",
+            item: "https://sirotech.vercel.app",
           },
           {
             "@type": "ListItem",
             position: 2,
             name: "Solutions",
-            item: "https://sirotech.com/solutions",
+            item: "https://sirotech.vercel.app/solutions",
           },
         ],
       },

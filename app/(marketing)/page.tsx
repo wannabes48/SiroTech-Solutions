@@ -21,10 +21,10 @@ const jsonLd = {
   "@graph": [
     {
       "@type": "Organization",
-      "@id": "https://sirotech.com/#organization",
+      "@id": "https://sirotech.vercel.app/#organization",
       name: "SiroTech Solutions",
-      url: "https://sirotech.com",
-      logo: "https://sirotech.com/logo.svg",
+      url: "https://sirotech.vercel.app",
+      logo: "https://sirotech.vercel.app/logo.svg",
       description:
         "Independent software and IT services studio specializing in custom web applications, cloud infrastructure, and AI integrations.",
       address: {
@@ -35,17 +35,17 @@ const jsonLd = {
       contactPoint: {
         "@type": "ContactPoint",
         contactType: "sales and engineering",
-        email: "hello@sirotech.com",
+        email: "hello@sirotech.vercel.app",
         availableLanguage: ["English", "Swahili"],
       },
     },
     {
       "@type": "WebSite",
-      "@id": "https://sirotech.com/#website",
-      url: "https://sirotech.com",
+      "@id": "https://sirotech.vercel.app/#website",
+      url: "https://sirotech.vercel.app",
       name: "SiroTech Solutions",
       publisher: {
-        "@id": "https://sirotech.com/#organization",
+        "@id": "https://sirotech.vercel.app/#organization",
       },
     },
   ],

@@ -1,4 +1,4 @@
-import { notFound } from "next/navigation";
+﻿import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import Link from "next/link";
 import Navbar from "@/components/Navbar";
@@ -49,7 +49,7 @@ export async function generateMetadata({
     openGraph: {
       title: `${solution.title} - ${solution.tagline} | SiroTech`,
       description: solution.summary,
-      url: `https://sirotech.com/solutions/${solution.slug}`,
+      url: `https://sirotech.vercel.app/solutions/${solution.slug}`,
     },
   };
 }
@@ -71,7 +71,7 @@ export default async function SolutionDetailPage({
     "@graph": [
       {
         "@type": "SoftwareApplication",
-        "@id": `https://sirotech.com/solutions/${solution.slug}#app`,
+        "@id": `https://sirotech.vercel.app/solutions/${solution.slug}#app`,
         name: solution.title,
         applicationCategory: "BusinessApplication",
         operatingSystem: "Cloud / Web / Linux",
@@ -85,7 +85,7 @@ export default async function SolutionDetailPage({
       },
       {
         "@type": "FAQPage",
-        "@id": `https://sirotech.com/solutions/${solution.slug}#faq`,
+        "@id": `https://sirotech.vercel.app/solutions/${solution.slug}#faq`,
         mainEntity: solution.faqs.map((faq) => ({
           "@type": "Question",
           name: faq.q,
@@ -102,19 +102,19 @@ export default async function SolutionDetailPage({
             "@type": "ListItem",
             position: 1,
             name: "Home",
-            item: "https://sirotech.com",
+            item: "https://sirotech.vercel.app",
           },
           {
             "@type": "ListItem",
             position: 2,
             name: "Solutions",
-            item: "https://sirotech.com/solutions",
+            item: "https://sirotech.vercel.app/solutions",
           },
           {
             "@type": "ListItem",
             position: 3,
             name: solution.title,
-            item: `https://sirotech.com/solutions/${solution.slug}`,
+            item: `https://sirotech.vercel.app/solutions/${solution.slug}`,
           },
         ],
       },

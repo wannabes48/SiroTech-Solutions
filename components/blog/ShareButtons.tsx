@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import React, { useState } from "react";
 import { Link2, Check, Share2, MessageCircle } from "lucide-react";
@@ -12,7 +12,7 @@ export function ShareButtons({ title, slug }: ShareButtonsProps) {
   const [copied, setCopied] = useState(false);
 
   // Canonical production URL is strictly deterministic between server SSR and client hydration
-  const canonicalUrl = `https://sirotech.com/blog/${slug}`;
+  const canonicalUrl = `https://sirotech.vercel.app/blog/${slug}`;
   const encodedUrl = encodeURIComponent(canonicalUrl);
   const encodedTitle = encodeURIComponent(title);
 

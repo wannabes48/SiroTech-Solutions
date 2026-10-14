@@ -1,4 +1,4 @@
-import { notFound } from "next/navigation";
+﻿import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import Link from "next/link";
 import Navbar from "@/components/Navbar";
@@ -47,7 +47,7 @@ export async function generateMetadata({
     openGraph: {
       title: `${project.title} - ${project.tagline} | SiroTech Solutions`,
       description: project.summary,
-      url: `https://sirotech.com/work/${project.slug}`,
+      url: `https://sirotech.vercel.app/work/${project.slug}`,
       type: "article",
     },
   };
@@ -81,19 +81,19 @@ export default async function CaseStudyDetailPage({
     "@graph": [
       {
         "@type": "Article",
-        "@id": `https://sirotech.com/work/${project.slug}#article`,
+        "@id": `https://sirotech.vercel.app/work/${project.slug}#article`,
         headline: `${project.title}: ${project.tagline}`,
         description: project.summary,
-        url: `https://sirotech.com/work/${project.slug}`,
+        url: `https://sirotech.vercel.app/work/${project.slug}`,
         author: {
           "@type": "Organization",
           name: "SiroTech Solutions",
-          url: "https://sirotech.com",
+          url: "https://sirotech.vercel.app",
         },
         publisher: {
           "@type": "Organization",
           name: "SiroTech Solutions",
-          url: "https://sirotech.com",
+          url: "https://sirotech.vercel.app",
         },
         about: {
           "@type": "CreativeWork",
@@ -109,19 +109,19 @@ export default async function CaseStudyDetailPage({
             "@type": "ListItem",
             position: 1,
             name: "Home",
-            item: "https://sirotech.com",
+            item: "https://sirotech.vercel.app",
           },
           {
             "@type": "ListItem",
             position: 2,
             name: "Work",
-            item: "https://sirotech.com/work",
+            item: "https://sirotech.vercel.app/work",
           },
           {
             "@type": "ListItem",
             position: 3,
             name: project.title,
-            item: `https://sirotech.com/work/${project.slug}`,
+            item: `https://sirotech.vercel.app/work/${project.slug}`,
           },
         ],
       },

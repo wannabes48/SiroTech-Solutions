@@ -32,16 +32,16 @@ const aboutJsonLd = {
   "@graph": [
     {
       "@type": "AboutPage",
-      "@id": "https://sirotech.com/about/#webpage",
-      url: "https://sirotech.com/about",
+      "@id": "https://sirotech.vercel.app/about/#webpage",
+      url: "https://sirotech.vercel.app/about",
       name: "About SiroTech Solutions",
       description: "Our mission, architectural heritage, and senior engineering leadership.",
     },
     {
       "@type": "Organization",
-      "@id": "https://sirotech.com/#organization",
+      "@id": "https://sirotech.vercel.app/#organization",
       name: "SiroTech Solutions",
-      url: "https://sirotech.com",
+      url: "https://sirotech.vercel.app",
       founder: {
         "@type": "Person",
         name: "Daniel Siro",

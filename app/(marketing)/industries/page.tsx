@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+﻿import type { Metadata } from "next";
 import Link from "next/link";
 import Navbar from "@/components/Navbar";
 import { Container } from "@/components/ui/Container";
@@ -30,7 +30,7 @@ export const metadata: Metadata = {
     title: "Industries We Serve | SiroTech Solutions Nairobi",
     description:
       "Enterprise systems engineered around regulatory, operational, and commercial sector constraints.",
-    url: "https://sirotech.com/industries",
+    url: "https://sirotech.vercel.app/industries",
   },
 };
 
@@ -51,15 +51,15 @@ export default function IndustriesIndexPage() {
     "@graph": [
       {
         "@type": "CollectionPage",
-        "@id": "https://sirotech.com/industries#page",
+        "@id": "https://sirotech.vercel.app/industries#page",
         name: "Industries & Sector Solutions | SiroTech Solutions",
         description:
           "Software architectures engineered for domain-specific constraints across 8 core industries.",
-        url: "https://sirotech.com/industries",
+        url: "https://sirotech.vercel.app/industries",
         isPartOf: {
           "@type": "WebSite",
           name: "SiroTech Solutions",
-          url: "https://sirotech.com",
+          url: "https://sirotech.vercel.app",
         },
       },
       {
@@ -69,13 +69,13 @@ export default function IndustriesIndexPage() {
             "@type": "ListItem",
             position: 1,
             name: "Home",
-            item: "https://sirotech.com",
+            item: "https://sirotech.vercel.app",
           },
           {
             "@type": "ListItem",
             position: 2,
             name: "Industries",
-            item: "https://sirotech.com/industries",
+            item: "https://sirotech.vercel.app/industries",
           },
         ],
       },

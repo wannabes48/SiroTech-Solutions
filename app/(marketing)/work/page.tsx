@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+﻿import type { Metadata } from "next";
 import Link from "next/link";
 import Navbar from "@/components/Navbar";
 import { Container } from "@/components/ui/Container";
@@ -25,7 +25,7 @@ export const metadata: Metadata = {
     title: "Case Studies & Engineering Work | SiroTech Solutions",
     description:
       "Production systems and hackathon-winning prototypes built with modern TypeScript, Python, and cloud infrastructure.",
-    url: "https://sirotech.com/work",
+    url: "https://sirotech.vercel.app/work",
   },
 };
 
@@ -84,15 +84,15 @@ export default async function WorkPage({ searchParams }: WorkPageProps) {
     "@graph": [
       {
         "@type": "CollectionPage",
-        "@id": "https://sirotech.com/work#page",
+        "@id": "https://sirotech.vercel.app/work#page",
         name: "Case Studies & Engineering Portfolio | SiroTech Solutions",
         description:
           "Production systems and software engineering architectures delivered by SiroTech Solutions.",
-        url: "https://sirotech.com/work",
+        url: "https://sirotech.vercel.app/work",
         isPartOf: {
           "@type": "WebSite",
           name: "SiroTech Solutions",
-          url: "https://sirotech.com",
+          url: "https://sirotech.vercel.app",
         },
       },
       {
@@ -102,13 +102,13 @@ export default async function WorkPage({ searchParams }: WorkPageProps) {
             "@type": "ListItem",
             position: 1,
             name: "Home",
-            item: "https://sirotech.com",
+            item: "https://sirotech.vercel.app",
           },
           {
             "@type": "ListItem",
             position: 2,
             name: "Work",
-            item: "https://sirotech.com/work",
+            item: "https://sirotech.vercel.app/work",
           },
         ],
       },

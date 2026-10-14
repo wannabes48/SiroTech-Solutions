@@ -48,7 +48,7 @@ export async function generateMetadata({
     openGraph: {
       title: post.title,
       description: post.excerpt,
-      url: `https://sirotech.com/blog/${post.slug}`,
+      url: `https://sirotech.vercel.app/blog/${post.slug}`,
       type: "article",
       images: [{ url: post.cover, width: 1200, height: 630 }],
     },
@@ -80,7 +80,7 @@ export default async function BlogPostPage({
     "@graph": [
       {
         "@type": "Article",
-        "@id": `https://sirotech.com/blog/${post.slug}#article`,
+        "@id": `https://sirotech.vercel.app/blog/${post.slug}#article`,
         headline: post.title,
         description: post.excerpt,
         image: post.cover,
@@ -94,11 +94,11 @@ export default async function BlogPostPage({
         publisher: {
           "@type": "Organization",
           name: "SiroTech Solutions",
-          url: "https://sirotech.com",
+          url: "https://sirotech.vercel.app",
         },
         mainEntityOfPage: {
           "@type": "WebPage",
-          "@id": `https://sirotech.com/blog/${post.slug}`,
+          "@id": `https://sirotech.vercel.app/blog/${post.slug}`,
         },
       },
       {
@@ -108,19 +108,19 @@ export default async function BlogPostPage({
             "@type": "ListItem",
             position: 1,
             name: "Home",
-            item: "https://sirotech.com",
+            item: "https://sirotech.vercel.app",
           },
           {
             "@type": "ListItem",
             position: 2,
             name: "Blog",
-            item: "https://sirotech.com/blog",
+            item: "https://sirotech.vercel.app/blog",
           },
           {
             "@type": "ListItem",
             position: 3,
             name: post.title,
-            item: `https://sirotech.com/blog/${post.slug}`,
+            item: `https://sirotech.vercel.app/blog/${post.slug}`,
           },
         ],
       },

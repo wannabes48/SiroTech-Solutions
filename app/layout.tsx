@@ -9,6 +9,7 @@ const plusJakarta = Plus_Jakarta_Sans({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || "https://sirotech.vercel.app"),
   title: {
     default: "SiroTech Solutions | Software development in Nairobi",
     template: "%s | SiroTech Solutions",
@@ -17,7 +18,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "SiroTech Solutions",
     description: "Independent product studio based in Nairobi specializing in robust web, mobile, and AI integrations.",
-    url: "https://sirotech.com",
+    url: "https://sirotech.vercel.app",
     siteName: "SiroTech Solutions",
     images: [
       {

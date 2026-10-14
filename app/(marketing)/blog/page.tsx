@@ -31,7 +31,7 @@ export const metadata: Metadata = {
     title: "SiroTech Engineering Blog & Architectural Guides",
     description:
       "Deep-dive technical articles written by practicing systems architects in Nairobi.",
-    url: "https://sirotech.com/blog",
+    url: "https://sirotech.vercel.app/blog",
   },
 };
 
@@ -63,15 +63,15 @@ export default async function BlogIndexPage({ searchParams }: BlogPageProps) {
     "@graph": [
       {
         "@type": "Blog",
-        "@id": "https://sirotech.com/blog#blog",
+        "@id": "https://sirotech.vercel.app/blog#blog",
         name: "SiroTech Solutions Engineering Blog",
         description:
           "Technical articles and systems engineering case guides for East African and global architectures.",
-        url: "https://sirotech.com/blog",
+        url: "https://sirotech.vercel.app/blog",
         publisher: {
           "@type": "Organization",
           name: "SiroTech Solutions",
-          url: "https://sirotech.com",
+          url: "https://sirotech.vercel.app",
         },
       },
       {
@@ -81,13 +81,13 @@ export default async function BlogIndexPage({ searchParams }: BlogPageProps) {
             "@type": "ListItem",
             position: 1,
             name: "Home",
-            item: "https://sirotech.com",
+            item: "https://sirotech.vercel.app",
           },
           {
             "@type": "ListItem",
             position: 2,
             name: "Blog",
-            item: "https://sirotech.com/blog",
+            item: "https://sirotech.vercel.app/blog",
           },
         ],
       },

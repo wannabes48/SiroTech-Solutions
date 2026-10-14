@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+﻿import type { Metadata } from "next";
 import Link from "next/link";
 import Navbar from "@/components/Navbar";
 import { Container } from "@/components/ui/Container";
@@ -30,7 +30,7 @@ export const metadata: Metadata = {
     title: "FAQ & Engineering Guidelines | SiroTech Solutions",
     description:
       "Clear, transparent answers on project pricing, sprint delivery, technical capabilities, and production maintenance.",
-    url: "https://sirotech.com/faq",
+    url: "https://sirotech.vercel.app/faq",
   },
 };
 

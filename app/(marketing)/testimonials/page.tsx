@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+﻿import type { Metadata } from "next";
 import Link from "next/link";
 import Navbar from "@/components/Navbar";
 import { Container } from "@/components/ui/Container";
@@ -23,7 +23,7 @@ export const metadata: Metadata = {
     title: "Client Testimonials & Partner Reviews | SiroTech Solutions",
     description:
       "Verified feedback from founders, product directors, and engineering leaders.",
-    url: "https://sirotech.com/testimonials",
+    url: "https://sirotech.vercel.app/testimonials",
   },
 };
 
@@ -35,7 +35,7 @@ export default async function TestimonialsPage() {
     "@graph": [
       {
         "@type": "ItemList",
-        "@id": "https://sirotech.com/testimonials#list",
+        "@id": "https://sirotech.vercel.app/testimonials#list",
         name: "Client Testimonials for SiroTech Solutions",
         description:
           "Independent verified feedback from business leaders and founders.",
@@ -66,13 +66,13 @@ export default async function TestimonialsPage() {
             "@type": "ListItem",
             position: 1,
             name: "Home",
-            item: "https://sirotech.com",
+            item: "https://sirotech.vercel.app",
           },
           {
             "@type": "ListItem",
             position: 2,
             name: "Testimonials",
-            item: "https://sirotech.com/testimonials",
+            item: "https://sirotech.vercel.app/testimonials",
           },
         ],
       },

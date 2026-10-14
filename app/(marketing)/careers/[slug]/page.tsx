@@ -46,7 +46,7 @@ export async function generateMetadata({
     };
   }
 
-  const canonicalUrl = `https://sirotech.com/careers/${role.slug}`;
+  const canonicalUrl = `https://sirotech.vercel.app/careers/${role.slug}`;
 
   return {
     title: `${role.title} | Careers at SiroTech Solutions Nairobi`,
@@ -84,8 +84,8 @@ export default async function CareerDetailPage({ params }: CareerDetailPageProps
     hiringOrganization: {
       "@type": "Organization",
       name: "SiroTech Solutions",
-      sameAs: "https://sirotech.com",
-      logo: "https://sirotech.com/icon.svg",
+      sameAs: "https://sirotech.vercel.app",
+      logo: "https://sirotech.vercel.app/icon.svg",
     },
     jobLocation: {
       "@type": "Place",
@@ -277,10 +277,10 @@ export default async function CareerDetailPage({ params }: CareerDetailPageProps
           {/* Bottom CtaBand */}
           <CtaBand
             headline="Have questions about life or engineering at SiroTech?"
-            description="Speak directly with our team leads or email careers@sirotech.com with questions before applying."
+            description="Speak directly with our team leads or email careers@sirotech.vercel.app with questions before applying."
             primaryAction={{
               label: "Email Careers Lead",
-              href: "mailto:careers@sirotech.com",
+              href: "mailto:careers@sirotech.vercel.app",
             }}
             secondaryAction={{
               label: "Explore Studio About Page",

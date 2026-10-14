@@ -1,0 +1,17 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "regions": ["fra1"],
+  "functions": {
+    "app/api/assistant/route.ts": { "maxDuration": 30 },
+    "app/api/contact/route.ts": { "maxDuration": 15 },
+    "app/api/stripe/webhook/route.ts": { "maxDuration": 15 },
+    "app/api/mpesa/callback/route.ts": { "maxDuration": 15 },
+    "src/app/api/assistant/route.ts": { "maxDuration": 30 },
+    "src/app/api/contact/route.ts": { "maxDuration": 15 },
+    "src/app/api/stripe/webhook/route.ts": { "maxDuration": 15 },
+    "src/app/api/mpesa/callback/route.ts": { "maxDuration": 15 }
+  },
+  "crons": [
+    { "path": "/api/cron/retention", "schedule": "0 2 * * *" }
+  ]
+}

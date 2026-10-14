@@ -1,4 +1,4 @@
-import { notFound } from "next/navigation";
+﻿import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import Link from "next/link";
 import Navbar from "@/components/Navbar";
@@ -49,7 +49,7 @@ export async function generateMetadata({
     openGraph: {
       title: `${industry.title} Software Solutions | SiroTech`,
       description: industry.summary,
-      url: `https://sirotech.com/industries/${industry.slug}`,
+      url: `https://sirotech.vercel.app/industries/${industry.slug}`,
     },
   };
 }
@@ -77,18 +77,18 @@ export default async function IndustryDetailPage({
     "@graph": [
       {
         "@type": "Service",
-        "@id": `https://sirotech.com/industries/${industry.slug}#service`,
+        "@id": `https://sirotech.vercel.app/industries/${industry.slug}#service`,
         name: `${industry.title} Engineering Solutions`,
         description: industry.summary,
         provider: {
           "@type": "Organization",
           name: "SiroTech Solutions",
-          url: "https://sirotech.com",
+          url: "https://sirotech.vercel.app",
         },
       },
       {
         "@type": "FAQPage",
-        "@id": `https://sirotech.com/industries/${industry.slug}#faq`,
+        "@id": `https://sirotech.vercel.app/industries/${industry.slug}#faq`,
         mainEntity: industry.faqs.map((faq) => ({
           "@type": "Question",
           name: faq.q,
@@ -105,19 +105,19 @@ export default async function IndustryDetailPage({
             "@type": "ListItem",
             position: 1,
             name: "Home",
-            item: "https://sirotech.com",
+            item: "https://sirotech.vercel.app",
           },
           {
             "@type": "ListItem",
             position: 2,
             name: "Industries",
-            item: "https://sirotech.com/industries",
+            item: "https://sirotech.vercel.app/industries",
           },
           {
             "@type": "ListItem",
             position: 3,
             name: industry.title,
-            item: `https://sirotech.com/industries/${industry.slug}`,
+            item: `https://sirotech.vercel.app/industries/${industry.slug}`,
           },
         ],
       },
