@@ -9,7 +9,7 @@ const latestPosts = [
     date: "Oct 12, 2026",
     readingTime: "5 min read",
     slug: "scaling-nextjs",
-    image: "https://images.unsplash.com/photo-1555066931-4365d14bab8c?auto=format&fit=crop&q=80&w=800",
+    image: "https://naturaily.com/_next/image?url=https%3A%2F%2Fa.storyblok.com%2Ff%2F172506%2F1920x1080%2Fc6c9cff446%2Fnext-js-development.png&w=3840&q=75",
   },
   {
     title: "PostgreSQL Indexing & Sharding for High Concurrency",
@@ -17,7 +17,7 @@ const latestPosts = [
     date: "Sep 28, 2026",
     readingTime: "8 min read",
     slug: "postgres-indexing",
-    image: "https://images.unsplash.com/photo-1558494949-ef010cbdcc31?auto=format&fit=crop&q=80&w=800",
+    image: "https://www.highgo.ca/wp-content/uploads/2019/08/pg_shard2.jpg",
   },
   {
     title: "Building Offline-First Mobile Apps with React Native",
@@ -25,7 +25,7 @@ const latestPosts = [
     date: "Sep 15, 2026",
     readingTime: "6 min read",
     slug: "offline-first-react-native",
-    image: "https://images.unsplash.com/photo-1512941937669-90a1b58e7e9c?auto=format&fit=crop&q=80&w=800",
+    image: "https://miro.medium.com/1*VYV5Idna3eZccAxuPIrw8Q.png",
   },
 ];
 
