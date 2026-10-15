@@ -54,6 +54,7 @@ const jsonLd = {
 export default function HomePage() {
   return (
     <div className="min-h-screen bg-bg text-ink antialiased">
+      <meta name="google-site-verification" content="yCWkx_g_st56DQ35eL4It-2tnZCBCN7bC-pB6aNyRgM" />
       {/* Schema.org Organization & WebSite JSON-LD */}
       <script
         type="application/ld+json"
