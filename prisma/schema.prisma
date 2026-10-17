@@ -13,6 +13,50 @@ enum Role {
   CLIENT
 }
 
+enum OrgRole {
+  OWNER
+  MEMBER
+}
+
+enum ProjectStatus {
+  PLANNING
+  DESIGN
+  BUILD
+  TESTING
+  LIVE
+  ON_HOLD
+  COMPLETE
+}
+
+enum MilestoneStatus {
+  UPCOMING
+  IN_PROGRESS
+  AWAITING_APPROVAL
+  APPROVED
+  CHANGES_REQUESTED
+}
+
+enum FileKind {
+  DELIVERABLE
+  DOCUMENT
+  ASSET
+  CONTRACT
+}
+
+enum PayMethod {
+  STRIPE
+  MPESA
+  BANK
+}
+
+enum TicketStatus {
+  OPEN
+  WAITING_ON_CLIENT
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
 enum LeadStatus {
   NEW
   CONTACTED
@@ -29,19 +73,239 @@ enum Currency {
 }
 
 model User {
-  id            String    @id @default(cuid())
-  name          String?
-  email         String    @unique
-  passwordHash  String?
-  role          Role      @default(CLIENT)
-  emailVerified DateTime?
-  company       String?
-  phone         String?
-  createdAt     DateTime  @default(now())
-  
-  projects      Project[]
-  invoices      Invoice[]
-  tickets       Ticket[]
+  id             String            @id @default(cuid())
+  name           String?
+  email          String            @unique
+  passwordHash   String?
+  role           Role              @default(CLIENT)
+  emailVerified  DateTime?
+  company        String?
+  phone          String?
+  createdAt      DateTime          @default(now())
+  failedAttempts Int               @default(0)
+  lockedUntil    DateTime?
+  lastLoginAt    DateTime?
+  avatarUrl      String?
+  timezone       String            @default("Africa/Nairobi")
+  totpSecret     String?
+  totpEnabled    Boolean           @default(false)
+  memberships    Membership[]
+  notifications  Notification[]
+  prefs          NotificationPref?
+}
+
+model Organization {
+  id           String      @id @default(cuid())
+  name         String
+  billingEmail String?
+  taxPin       String?
+  address      String?
+  country      String?
+  currency     Currency    @default(KES)
+  members      Membership[]
+  invites      Invite[]
+  projects     Project[]
+  invoices     Invoice[]
+  tickets      Ticket[]
+  files        FileAsset[]
+}
+
+model Membership {
+  id     String       @id @default(cuid())
+  userId String
+  orgId  String
+  role   OrgRole      @default(MEMBER)
+  user   User         @relation(fields: [userId], references: [id])
+  org    Organization @relation(fields: [orgId], references: [id])
+
+  @@unique([userId, orgId])
+}
+
+model Invite {
+  id          String       @id @default(cuid())
+  orgId       String
+  email       String
+  role        OrgRole      @default(MEMBER)
+  tokenHash   String       @unique
+  expiresAt   DateTime
+  acceptedAt  DateTime?
+  invitedById String
+  org         Organization @relation(fields: [orgId], references: [id])
+}
+
+model Project {
+  id         String        @id @default(cuid())
+  orgId      String
+  title      String
+  summary    String?
+  status     ProjectStatus @default(PLANNING)
+  startDate  DateTime?
+  targetDate DateTime?
+  managerId  String?
+  org        Organization  @relation(fields: [orgId], references: [id])
+  milestones Milestone[]
+  updates    Update[]
+  files      FileAsset[]
+  messages   Message[]
+  invoices   Invoice[]
+  proposals  Proposal[]
+  tickets    Ticket[]
+}
+
+model Milestone {
+  id           String          @id @default(cuid())
+  projectId    String
+  title        String
+  description  String?
+  dueDate      DateTime?
+  status       MilestoneStatus @default(UPCOMING)
+  order        Int
+  approvedById String?
+  approvedAt   DateTime?
+  feedback     String?
+  project      Project         @relation(fields: [projectId], references: [id])
+}
+
+model Update {
+  id        String   @id @default(cuid())
+  projectId String
+  authorId  String
+  title     String
+  body      String   @db.Text
+  createdAt DateTime @default(now())
+  project   Project  @relation(fields: [projectId], references: [id])
+}
+
+model FileAsset {
+  id           String       @id @default(cuid())
+  orgId        String
+  projectId    String?
+  uploadedById String
+  name         String
+  key          String
+  size         Int
+  mime         String
+  kind         FileKind     @default(DOCUMENT)
+  createdAt    DateTime     @default(now())
+  org          Organization @relation(fields: [orgId], references: [id])
+  project      Project?     @relation(fields: [projectId], references: [id])
+}
+
+model Message {
+  id          String   @id @default(cuid())
+  projectId   String
+  authorId    String
+  body        String   @db.Text
+  attachments Json?
+  readBy      String[]
+  createdAt   DateTime @default(now())
+  project     Project  @relation(fields: [projectId], references: [id])
+}
+
+model Proposal {
+  id           String    @id @default(cuid())
+  projectId    String
+  title        String
+  fileId       String?
+  amount       Int
+  currency     Currency
+  status       String    @default("SENT")
+  acceptedById String?
+  acceptedAt   DateTime?
+  project      Project   @relation(fields: [projectId], references: [id])
+}
+
+model Invoice {
+  id           String       @id @default(cuid())
+  number       String       @unique
+  orgId        String
+  projectId    String?
+  items        Json
+  subtotal     Int
+  tax          Int
+  total        Int
+  amount       Int
+  currency     Currency
+  status       String       // DRAFT|SENT|PAID|OVERDUE
+  dueAt        DateTime
+  paidAt       DateTime?
+  stripeId     String?
+  mpesaReceipt String?
+  org          Organization @relation(fields: [orgId], references: [id])
+  project      Project?     @relation(fields: [projectId], references: [id])
+  payments     Payment[]
+}
+
+model Payment {
+  id        String    @id @default(cuid())
+  invoiceId String
+  method    PayMethod
+  amount    Int
+  currency  Currency
+  reference String?
+  status    String
+  createdAt DateTime  @default(now())
+  invoice   Invoice   @relation(fields: [invoiceId], references: [id])
+}
+
+model Ticket {
+  id         String        @id @default(cuid())
+  orgId      String
+  projectId  String?
+  category   String        @default("GENERAL")
+  priority   String        @default("MEDIUM")
+  assigneeId String?
+  subject    String
+  body       String        @db.Text
+  status     TicketStatus  @default(OPEN)
+  createdAt  DateTime      @default(now())
+  org        Organization  @relation(fields: [orgId], references: [id])
+  project    Project?      @relation(fields: [projectId], references: [id])
+  replies    TicketReply[]
+}
+
+model TicketReply {
+  id        String   @id @default(cuid())
+  ticketId  String
+  authorId  String
+  body      String   @db.Text
+  internal  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  ticket    Ticket   @relation(fields: [ticketId], references: [id])
+}
+
+model Notification {
+  id        String    @id @default(cuid())
+  userId    String
+  type      String
+  title     String
+  body      String?
+  href      String?
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id])
+
+  @@index([userId, readAt])
+}
+
+model NotificationPref {
+  userId        String  @id
+  emailMessages Boolean @default(true)
+  emailInvoices Boolean @default(true)
+  emailUpdates  Boolean @default(true)
+  emailTickets  Boolean @default(true)
+  user          User    @relation(fields: [userId], references: [id])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  actorId   String?
+  action    String
+  entity    String
+  entityId  String?
+  meta      Json?
+  ip        String?
+  createdAt DateTime @default(now())
 }
 
 model Service {
@@ -115,7 +379,6 @@ model Category {
   id    String @id @default(cuid())
   slug  String @unique
   name  String
-  
   posts Post[]
 }
 
@@ -146,8 +409,8 @@ model Plan {
   tagline     String
   features    String[]
   highlighted Boolean  @default(false)
-  prices      Json     // {KES:..,USD:..,CAD:..}
-  interval    String   // one-time | monthly
+  prices      Json
+  interval    String
   order       Int
 }
 
@@ -192,7 +455,6 @@ model Job {
   description  String        @db.Text
   requirements String[]
   open         Boolean       @default(true)
-  
   applications Application[]
 }
 
@@ -204,48 +466,7 @@ model Application {
   cvUrl     String
   message   String?
   createdAt DateTime @default(now())
-  
   job       Job      @relation(fields: [jobId], references: [id])
-}
-
-model Project {
-  id         String    @id @default(cuid())
-  title      String
-  clientId   String
-  status     String
-  milestones Json
-  files      Json
-  updates    Json
-  startedAt  DateTime?
-  
-  client     User      @relation(fields: [clientId], references: [id])
-}
-
-model Invoice {
-  id           String    @id @default(cuid())
-  number       String    @unique
-  clientId     String
-  amount       Int
-  currency     Currency
-  status       String    // DRAFT|SENT|PAID|OVERDUE
-  dueAt        DateTime
-  paidAt       DateTime?
-  stripeId     String?
-  mpesaReceipt String?
-  
-  client       User      @relation(fields: [clientId], references: [id])
-}
-
-model Ticket {
-  id        String   @id @default(cuid())
-  subject   String
-  body      String   @db.Text
-  status    String   @default("OPEN")
-  userId    String
-  replies   Json
-  createdAt DateTime @default(now())
-  
-  user      User     @relation(fields: [userId], references: [id])
 }
 
 model Setting {
