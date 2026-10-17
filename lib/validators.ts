@@ -9,8 +9,9 @@ export const baseContact = z.object({
   budget: z.string().optional().default("Not specified"),
   message: z.string().min(3, "Please provide at least a brief message"),
   consent: z.boolean().optional().default(true),
-  website: z.string().max(0, "Bot detection").optional(), // Honeypot
+  website: z.string().optional(),
   turnstileToken: z.string().optional(),
+  "cf-turnstile-response": z.string().optional(),
 });
 
 export const contactSchema = baseContact.extend({

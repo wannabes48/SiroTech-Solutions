@@ -181,4 +181,102 @@ export async function recordUsage(usage?: { input_tokens?: number; output_tokens
     memoryUsage = { date: today, tokens: 0 };
   }
   memoryUsage.tokens += tokens;
+
+  // Sync to PostgreSQL assistant_stats and assistant_usage tables
+  try {
+    const { query } = await import("@/lib/db");
+    const inTokens = usage?.input_tokens ?? 150;
+    const outTokens = usage?.output_tokens ?? 100;
+
+    await query(
+      `INSERT INTO assistant_stats (day, kind, count)
+       VALUES ($1, 'tokens', $2)
+       ON CONFLICT (day, kind)
+       DO UPDATE SET count = assistant_stats.count + $2`,
+      [today, tokens]
+    );
+
+    await query(
+      `INSERT INTO assistant_usage (day, requests, input_tokens, output_tokens, total_tokens)
+       VALUES ($1, 1, $2, $3, $4)
+       ON CONFLICT (day)
+       DO UPDATE SET 
+         requests = assistant_usage.requests + 1,
+         input_tokens = assistant_usage.input_tokens + $2,
+         output_tokens = assistant_usage.output_tokens + $3,
+         total_tokens = assistant_usage.total_tokens + $4`,
+      [today, inTokens, outTokens, tokens]
+    );
+  } catch (err) {
+    // Non-blocking
+  }
+}
+
+export async function recordRateLimitHit() {
+  const today = new Date().toISOString().split("T")[0];
+  try {
+    const { query } = await import("@/lib/db");
+    await query(
+      `INSERT INTO assistant_usage (day, rate_limit_hits)
+       VALUES ($1, 1)
+       ON CONFLICT (day)
+       DO UPDATE SET rate_limit_hits = assistant_usage.rate_limit_hits + 1`,
+      [today]
+    );
+  } catch {}
+}
+
+export async function recordDegradedIncident() {
+  const today = new Date().toISOString().split("T")[0];
+  try {
+    const { query } = await import("@/lib/db");
+    await query(
+      `INSERT INTO assistant_usage (day, degraded_incidents)
+       VALUES ($1, 1)
+       ON CONFLICT (day)
+       DO UPDATE SET degraded_incidents = assistant_usage.degraded_incidents + 1`,
+      [today]
+    );
+  } catch {}
+}
+
+export async function getCurrentTokenUsage(): Promise<number> {
+  const today = new Date().toISOString().split("T")[0];
+  const upstashUrl = process.env.UPSTASH_REDIS_REST_URL;
+  const upstashToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+
+  if (upstashUrl && upstashToken) {
+    try {
+      const key = `assistant:tokens:${today}`;
+      const res = await fetch(`${upstashUrl}/get/${key}`, {
+        headers: { Authorization: `Bearer ${upstashToken}` },
+      });
+      const data = await res.json();
+      if (data.result !== null && data.result !== undefined) {
+        return Number(data.result) || 0;
+      }
+    } catch (err) {
+      console.warn("[Budget] Upstash error getting token usage:", err);
+    }
+  }
+
+  // Check PostgreSQL assistant_stats table
+  try {
+    const { query } = await import("@/lib/db");
+    const res = await query<{ count: number }>(
+      "SELECT count FROM assistant_stats WHERE day = $1 AND kind = 'tokens'",
+      [today]
+    );
+    if (res.rows.length > 0 && res.rows[0].count !== undefined) {
+      return Number(res.rows[0].count);
+    }
+  } catch (err) {
+    // Ignore fallback
+  }
+
+  // Memory fallback
+  if (memoryUsage.date !== today) {
+    memoryUsage = { date: today, tokens: 0 };
+  }
+  return memoryUsage.tokens;
 }

@@ -2,11 +2,16 @@ import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import { tools, resolveTool } from "@/lib/assistant/tools";
 import { getSystem } from "@/lib/assistant/prompt";
-import { ratelimit, budgetOk, recordUsage } from "@/lib/assistant/limits";
+import { ratelimit, budgetOk, recordUsage, recordRateLimitHit, recordDegradedIncident } from "@/lib/assistant/limits";
 
 export const runtime = "nodejs";
 
-const MODEL = process.env.ASSISTANT_MODEL ?? "claude-haiku-4-5-20251001";
+const ALLOWED_MODELS = [
+  "claude-3-5-sonnet-20241022",
+  "claude-3-5-haiku-20241022",
+  "claude-3-haiku-20240307",
+  "claude-3-opus-20240229",
+];
 
 const Body = z.object({
   path: z.string().max(200).default("/"),
@@ -37,13 +42,40 @@ function sanitizeTopicCategory(text?: string): string {
 export async function POST(req: Request) {
   const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "anon";
 
-  // Rate limiting (20 / 10min, 60 / day)
+  // 1. Kill Switch / Enabled Check
+  // Read from database setting with environment variable as fallback
+  const { query } = await import("@/lib/db");
+  const settingsRes = await query<{ value: any }>(
+    "SELECT value FROM site_settings WHERE key = 'assistant' LIMIT 1"
+  ).catch(() => ({ rows: [] }));
+  const assistantSettings = settingsRes.rows[0]?.value || {};
+
+  const isEnabled =
+    assistantSettings.enabled !== undefined
+      ? Boolean(assistantSettings.enabled) && !assistantSettings.killSwitch
+      : assistantSettings.killSwitch !== undefined
+      ? !assistantSettings.killSwitch
+      : process.env.ASSISTANT_ENABLED !== "false";
+
+  if (!isEnabled) {
+    return new Response(
+      JSON.stringify({
+        disabled: true,
+        message: "The AI assistant is temporarily offline for maintenance. Please email hello@sirotech.com.",
+      }),
+      { status: 503, headers: { "Content-Type": "application/json" } }
+    );
+  }
+
+  // 2. Rate limiting (20 / 10min, 60 / day)
   if (!(await ratelimit.limit(ip)).success) {
+    await recordRateLimitHit();
     return new Response("rate", { status: 429 });
   }
 
-  // Daily token budget (ASSISTANT_DAILY_TOKENS)
+  // 3. Daily token budget guardrail
   if (!(await budgetOk())) {
+    await recordDegradedIncident();
     return new Response("capped", { status: 503 });
   }
 
@@ -56,7 +88,7 @@ export async function POST(req: Request) {
     return new Response("bad", { status: 400 });
   }
 
-  // Optional Turnstile verification on session start
+  // 4. Optional Turnstile verification on session start
   const turnstileSecret = process.env.TURNSTILE_SECRET_KEY;
   if (turnstileSecret && parsed.data.turnstileToken) {
     try {
@@ -77,13 +109,24 @@ export async function POST(req: Request) {
     }
   }
 
-  const system = await getSystem(parsed.data.path);
+  // 5. System prompt with tone notes and extra answers
+  const system = await getSystem(parsed.data.path, {
+    toneNotes: assistantSettings.defaultToneNotes,
+    extraAnswers: assistantSettings.extraAnswers,
+  });
+
   const convo: Anthropic.MessageParam[] = parsed.data.messages.slice(-12).map((m) => ({
     role: m.role,
     content: m.content,
   }));
   const lastUserText = parsed.data.messages.filter((m) => m.role === "user").at(-1)?.content;
   const enc = new TextEncoder();
+
+  // Model selection from allowlist
+  const selectedModel = ALLOWED_MODELS.includes(assistantSettings.model)
+    ? assistantSettings.model
+    : (process.env.ASSISTANT_MODEL ?? "claude-3-5-sonnet-20241022");
+  const maxTokens = Number(assistantSettings.maxReplyLength) || 400;
 
   const stream = new ReadableStream({
     async start(controller) {
@@ -98,8 +141,8 @@ export async function POST(req: Request) {
 
         for (let turn = 0; turn < 3; turn++) {
           const s = client.messages.stream({
-            model: MODEL,
-            max_tokens: 600,
+            model: selectedModel,
+            max_tokens: maxTokens,
             system: system as any,
             tools: tools as any,
             messages: convo,
@@ -118,12 +161,13 @@ export async function POST(req: Request) {
               const ui = resolveTool(tu.name, tu.input);
               if (ui) {
                 send({ type: "ui", ui });
-                if (tu.name === "show_contact_form") {
-                  // S12: log sanitized topic category only for weekly FAQ improvement
-                  console.log("[Assistant Unanswered Query]", {
-                    topic: sanitizeTopicCategory(lastUserText),
-                    timestamp: new Date().toISOString(),
-                  });
+                if (tu.name === "show_contact_form" || tu.name === "show_project_form") {
+                  // Quality Telemetry: Log unanswered question event
+                  query(
+                    `INSERT INTO assistant_events (type, topic, form_kind, created_at)
+                     VALUES ('unanswered_question', $1, $2, NOW())`,
+                    [sanitizeTopicCategory(lastUserText), tu.name === "show_project_form" ? "project" : "contact"]
+                  ).catch(() => {});
                 }
               }
               return {
@@ -139,6 +183,7 @@ export async function POST(req: Request) {
         send({ type: "done" });
       } catch (err) {
         console.warn("[Assistant Stream Error]", err);
+        await recordDegradedIncident();
         send({ type: "error" });
       } finally {
         controller.close();

@@ -294,6 +294,17 @@ export default function Footer() {
             <Link href="/legal/cookies" className="hover:text-white transition-colors">
               Cookie Policy
             </Link>
+            <button
+              type="button"
+              onClick={() => {
+                if (typeof window !== "undefined") {
+                  window.dispatchEvent(new CustomEvent("open-cookie-settings"));
+                }
+              }}
+              className="hover:text-white transition-colors cursor-pointer"
+            >
+              Cookie Preferences
+            </button>
             <Link href="/legal/accessibility" className="hover:text-white transition-colors">
               Accessibility
             </Link>

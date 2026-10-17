@@ -1,8 +1,26 @@
 import { services } from "@/data/services";
 import { projectPricingTiers } from "@/data/pricing";
 import { FAQ_GROUPS } from "@/data/faq";
+import { query } from "@/lib/db";
 
 export async function getServices() {
+  if (process.env.CONTENT_SOURCE === "db") {
+    try {
+      const res = await query(
+        `SELECT slug, title, summary, content FROM content_items WHERE type = 'service' AND status = 'PUBLISHED'`
+      );
+      if (res.rows.length > 0) {
+        return res.rows.map((row) => ({
+          title: row.title,
+          slug: row.slug,
+          summary: row.summary,
+        }));
+      }
+    } catch (err) {
+      console.warn("Falling back to static services content:", err);
+    }
+  }
+
   return services.map((s) => ({
     title: s.title,
     slug: s.slug,
@@ -11,6 +29,27 @@ export async function getServices() {
 }
 
 export async function getPlans() {
+  if (process.env.CONTENT_SOURCE === "db") {
+    try {
+      const res = await query(
+        `SELECT slug, title, summary, content FROM content_items WHERE type = 'pricing' AND status = 'PUBLISHED'`
+      );
+      if (res.rows.length > 0) {
+        return res.rows.map((row) => {
+          const content = typeof row.content === "string" ? JSON.parse(row.content) : (row.content || {});
+          return {
+            name: row.title,
+            tagline: row.summary,
+            prices: content.prices || { KES: "Contact for pricing", USD: "Contact for pricing" },
+            features: content.features || content.deliverables || [],
+          };
+        });
+      }
+    } catch (err) {
+      console.warn("Falling back to static pricing content:", err);
+    }
+  }
+
   return projectPricingTiers.map((p) => ({
     name: p.name,
     tagline: p.scope,
@@ -23,6 +62,25 @@ export async function getPlans() {
 }
 
 export async function getFaqs() {
+  if (process.env.CONTENT_SOURCE === "db") {
+    try {
+      const res = await query(
+        `SELECT slug, title, summary, content FROM content_items WHERE type = 'faq' AND status = 'PUBLISHED'`
+      );
+      if (res.rows.length > 0) {
+        return res.rows.map((row) => {
+          const content = typeof row.content === "string" ? JSON.parse(row.content) : (row.content || {});
+          return {
+            q: row.title,
+            a: row.summary || content.answer || "",
+          };
+        });
+      }
+    } catch (err) {
+      console.warn("Falling back to static FAQ content:", err);
+    }
+  }
+
   return FAQ_GROUPS.flatMap((g) => g.items).map((item) => ({
     q: item.q,
     a: item.a,
@@ -51,6 +109,19 @@ export async function getProcess() {
 }
 
 export async function getSiteInfo() {
+  if (process.env.CONTENT_SOURCE === "db") {
+    try {
+      const res = await query(
+        `SELECT value FROM site_settings WHERE key = 'site_info'`
+      );
+      if (res.rows.length > 0 && res.rows[0].value) {
+        return res.rows[0].value;
+      }
+    } catch (err) {
+      console.warn("Falling back to static site info:", err);
+    }
+  }
+
   return {
     about:
       "SiroTech Solutions is an independent software and IT engineering studio based in Westlands, Nairobi, building modern web platforms, offline-first mobile apps, and enterprise systems.",

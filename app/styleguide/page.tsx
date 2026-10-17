@@ -19,6 +19,7 @@ import { Carousel } from "@/components/ui/Carousel";
 import { Breadcrumbs } from "@/components/ui/Breadcrumbs";
 import { CtaBand } from "@/components/ui/CtaBand";
 import { Reveal } from "@/components/ui/Reveal";
+import ConcentricRing from "@/components/ui/concentric-ring";
 import Link from "next/link";
 import {
   Code2,
@@ -441,6 +442,44 @@ export default function StyleguidePage() {
                 <p className="text-xs text-muted">Respects prefers-reduced-motion settings.</p>
               </div>
             </Reveal>
+          </div>
+        </section>
+
+        {/* 13. ConcentricRing (Theme Loader & Spinner) */}
+        <section className="space-y-6">
+          <div className="border-b border-rule pb-3">
+            <h2 className="text-2xl font-bold text-ink">13. ConcentricRing (Spinner Loader)</h2>
+            <p className="text-sm text-muted">Multi-ring animated SVG-free spinner configured with SiroTech Sage/Emerald/Ink theme tokens.</p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+            <div className="p-8 rounded-2xl bg-surface border border-rule flex flex-col items-center justify-center gap-4 text-center">
+              <ConcentricRing size="sm" variant="theme" />
+              <div>
+                <div className="text-xs font-bold text-ink">Small (sm: 20px)</div>
+                <div className="text-[11px] text-muted">Button &amp; inline badge loader</div>
+              </div>
+            </div>
+            <div className="p-8 rounded-2xl bg-surface border border-rule flex flex-col items-center justify-center gap-4 text-center">
+              <ConcentricRing size="md" variant="theme" />
+              <div>
+                <div className="text-xs font-bold text-ink">Medium (md: 32px)</div>
+                <div className="text-[11px] text-muted">Card &amp; widget loader</div>
+              </div>
+            </div>
+            <div className="p-8 rounded-2xl bg-surface border border-rule flex flex-col items-center justify-center gap-4 text-center">
+              <ConcentricRing size="lg" variant="theme" />
+              <div>
+                <div className="text-xs font-bold text-ink">Large (lg: 48px - Default)</div>
+                <div className="text-[11px] text-muted">Theme Sage / Olive tokens</div>
+              </div>
+            </div>
+            <div className="p-8 rounded-2xl bg-ink border border-white/10 flex flex-col items-center justify-center gap-4 text-center">
+              <ConcentricRing size="lg" variant="white" />
+              <div>
+                <div className="text-xs font-bold text-white">White on Dark (lg)</div>
+                <div className="text-[11px] text-white/60">Contrasting on ink backgrounds</div>
+              </div>
+            </div>
           </div>
         </section>
       </Container>

@@ -20,6 +20,8 @@
 .turbo/
 .cache/
 
+/supabase
+
 # Environment variables & local secrets
 .env
 .env*.local

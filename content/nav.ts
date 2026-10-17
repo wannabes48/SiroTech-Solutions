@@ -150,7 +150,6 @@ export const navItems: NavItem[] = [
   { label: "Work", href: "/work" },
   { label: "Pricing", href: "/pricing" },
   { label: "Blog", href: "/blog" },
-  { label: "Contact", href: "/contact" },
 ];
 
 export const navConfig = {
@@ -162,8 +161,8 @@ export const navConfig = {
     label: "Sign in",
     href: "/sign-in",
   },
-  // Feature flags: keep Sign in hidden until Part 1 Phase 7 authentication is wired up
+  // Feature flags: client portal authentication is now active
   features: {
-    showSignIn: false,
+    showSignIn: true,
   },
 };

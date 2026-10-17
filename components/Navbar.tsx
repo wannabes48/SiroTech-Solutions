@@ -128,8 +128,8 @@ export default function Navbar({
               />
             </Link>
 
-            {/* Desktop Navigation Links */}
-            <nav className="hidden lg:flex items-center gap-1 absolute left-1/2 -translate-x-1/2">
+            {/* Desktop Navigation Links: fluid flex-1 layout preventing collisions */}
+            <nav className="hidden lg:flex items-center justify-center gap-0.5 xl:gap-1.5 flex-1 min-w-0 mx-2">
               {navItems.map((item) => {
                 const isChildActive = item.children?.some(
                   (c) => pathname === c.href || pathname.startsWith(c.href + "/")
@@ -145,7 +145,7 @@ export default function Navbar({
                         type="button"
                         aria-expanded={isOpen}
                         onClick={() => toggleDropdown(item.label)}
-                        className={`relative flex items-center gap-1 text-xs font-semibold px-3.5 py-2 rounded-full transition-colors cursor-pointer ${
+                        className={`relative flex items-center gap-1 text-xs font-semibold px-2.5 xl:px-3 py-1.5 rounded-full transition-colors cursor-pointer whitespace-nowrap ${
                           isActive
                             ? isHome
                               ? "text-ink"
@@ -221,7 +221,7 @@ export default function Navbar({
                   <Link
                     key={item.label}
                     href={item.href}
-                    className={`relative text-xs font-semibold px-3.5 py-2 rounded-full transition-colors ${
+                    className={`relative text-xs font-semibold px-2.5 xl:px-3 py-1.5 rounded-full transition-colors whitespace-nowrap ${
                       isActive
                         ? isHome
                           ? "text-ink"
@@ -247,7 +247,7 @@ export default function Navbar({
             </nav>
 
             {/* Right Side CTAs */}
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
               {/* Search Trigger Button */}
               <button
                 type="button"
@@ -263,19 +263,11 @@ export default function Navbar({
                 <Search className="w-4 h-4" />
               </button>
 
-              <Link
-                href={navConfig.quoteCta.href}
-                className="hidden sm:inline-flex items-center gap-1.5 px-5 py-2 rounded-full bg-sage-300 text-ink text-xs font-bold uppercase tracking-wider hover:bg-sage-100 transition-colors shadow-xs"
-              >
-                <span>{navConfig.quoteCta.label}</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </Link>
-
               {/* Feature-flagged Sign In pill */}
               {navConfig.features.showSignIn && (
                 <Link
                   href={navConfig.signInCta.href}
-                  className={`hidden md:inline-flex items-center px-4 py-2 rounded-full text-xs font-semibold transition-colors ${
+                  className={`hidden md:inline-flex items-center px-3.5 py-1.5 rounded-full text-xs font-semibold transition-colors ${
                     isHome
                       ? "bg-white/20 text-white hover:bg-white/30"
                       : "bg-surface text-ink hover:bg-rule"
@@ -284,6 +276,15 @@ export default function Navbar({
                   {navConfig.signInCta.label}
                 </Link>
               )}
+
+              {/* Get a quote CTA button */}
+              <Link
+                href={navConfig.quoteCta.href}
+                className="hidden sm:inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-sage-300 text-ink text-xs font-bold uppercase tracking-wider hover:bg-sage-100 transition-colors shadow-xs"
+              >
+                <span>{navConfig.quoteCta.label}</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </Link>
 
               {/* Mobile Hamburger Button */}
               <button
@@ -393,6 +394,18 @@ export default function Navbar({
                       </Link>
                     );
                   })}
+
+                  <Link
+                    href="/contact"
+                    onClick={() => setMobileOpen(false)}
+                    className={`block p-3 rounded-xl text-sm font-semibold transition-colors ${
+                      pathname === "/contact"
+                        ? "bg-sage-100 text-sage-800"
+                        : "text-ink hover:bg-surface"
+                    }`}
+                  >
+                    Contact Us
+                  </Link>
                 </div>
               </div>
 

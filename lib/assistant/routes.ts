@@ -37,6 +37,10 @@ export const ROUTES = [
   "/book",
   "/legal/privacy",
   "/legal/terms",
+  "/sign-in",
+  "/sign-up",
+  "/portal",
+  "/portal/support",
 ] as const;
 
 export type AppRoute = (typeof ROUTES)[number];

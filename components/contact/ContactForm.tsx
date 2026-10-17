@@ -1,12 +1,13 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { services } from "@/data/services";
 import { Loader2, ArrowRight, ShieldCheck, AlertCircle } from "lucide-react";
+import { TurnstileWidget, TurnstileWidgetRef } from "@/components/TurnstileWidget";
 
 const budgetOptions = {
   KES: [
@@ -38,7 +39,6 @@ const contactFormSchema = z.object({
   consent: z.boolean().refine((val) => val === true, {
     message: "You must consent to our data handling policy to proceed",
   }),
-  website: z.string().optional(), // Honeypot
   turnstileToken: z.string().optional(),
 });
 
@@ -51,6 +51,8 @@ export function ContactForm() {
   const [currency, setCurrency] = useState<"KES" | "USD">("KES");
   const [serverError, setServerError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
+  const turnstileRef = useRef<TurnstileWidgetRef>(null);
 
   // Determine prefilled need from query parameters (?service=... or ?plan=...)
   const serviceParam = searchParams.get("service") || searchParams.get("package");
@@ -92,7 +94,6 @@ export function ContactForm() {
       budget: "70k_150k_kes",
       message: "",
       consent: true,
-      website: "",
     },
   });
 
@@ -106,6 +107,14 @@ export function ContactForm() {
 
   const onSubmit = async (data: ContactFormValues) => {
     if (isSubmitting) return; // Prevent double submit
+
+    // Check Turnstile token before dispatch
+    const siteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY || "0x4AAAAAAFX3BNw6jU9raPz4";
+    if (siteKey && !turnstileToken) {
+      setServerError("Please complete the Cloudflare security verification challenge below before submitting.");
+      return;
+    }
+
     setIsSubmitting(true);
     setServerError(null);
 
@@ -113,7 +122,11 @@ export function ContactForm() {
       const res = await fetch("/api/contact", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
+        body: JSON.stringify({
+          ...data,
+          turnstileToken,
+          "cf-turnstile-response": turnstileToken,
+        }),
       });
 
       const result = await res.json();
@@ -127,6 +140,9 @@ export function ContactForm() {
             "Unable to deliver your message. Please try again or email hello@sirotech.com directly."
         );
         setIsSubmitting(false);
+        // Single-use token: reset Turnstile on rejection so user can retry cleanly
+        setTurnstileToken(null);
+        turnstileRef.current?.reset();
       }
     } catch (err) {
       // Network failure: retain form data and show fallback retry message
@@ -134,6 +150,8 @@ export function ContactForm() {
         "Network connection interrupted. Your form data has been preserved. Please click submit again or email hello@sirotech.com directly."
       );
       setIsSubmitting(false);
+      setTurnstileToken(null);
+      turnstileRef.current?.reset();
     }
   };
 
@@ -154,18 +172,6 @@ export function ContactForm() {
       )}
 
       <form onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-6">
-        {/* Hidden Honeypot Field */}
-        <div className="hidden" aria-hidden="true">
-          <label htmlFor="website">Leave this field blank</label>
-          <input
-            {...register("website")}
-            id="website"
-            type="text"
-            tabIndex={-1}
-            autoComplete="off"
-          />
-        </div>
-
         {/* Row 1: Name & Company */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
           <div>
@@ -310,6 +316,26 @@ export function ContactForm() {
           {errors.message && (
             <p className="mt-1.5 text-xs text-rose-600 font-medium">{errors.message.message}</p>
           )}
+        </div>
+
+        {/* Cloudflare Turnstile Challenge Widget */}
+        <div className="py-2">
+          <TurnstileWidget
+            ref={turnstileRef}
+            siteKey={process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY || "0x4AAAAAAFX3BNw6jU9raPz4"}
+            action="contact"
+            theme="auto"
+            onVerify={(token) => {
+              setTurnstileToken(token);
+              if (serverError && serverError.includes("security verification")) {
+                setServerError(null);
+              }
+            }}
+            onExpire={() => setTurnstileToken(null)}
+            onError={(err) => {
+              console.warn("Turnstile challenge warning:", err);
+            }}
+          />
         </div>
 
         {/* Turnstile Trust Badge Notice */}

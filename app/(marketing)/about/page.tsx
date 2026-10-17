@@ -8,6 +8,7 @@ import { studioValues } from "@/data/values";
 import { studioTimeline } from "@/data/timeline";
 import WhyChooseUs from "@/components/WhyChooseUs";
 import { CtaBand } from "@/components/ui/CtaBand";
+import { GridPulse } from "@/components/ui/grid-pulse";
 import {
   Compass,
   CheckCircle2,
@@ -212,57 +213,79 @@ export default function AboutPage() {
         </section>
 
         {/* 5. Timeline: Vertical, Alternating on Desktop */}
-        <section>
-          <SectionHeader
-            align="center"
-            label="Studio Milestones"
-            heading="Our Journey from 2020 to Present"
-            description="A timeline of consistent growth, architectural innovation, and expanding cross-border impact."
+        <section className="relative overflow-hidden rounded-[36px] border border-rule/70 bg-surface/30 p-8 sm:p-14 lg:p-16 -mx-4 sm:-mx-6 lg:-mx-10 shadow-xs">
+          <GridPulse
+            cell={28}
+            reach={3}
+            ambient={4}
+            maxLit={180}
+            avoid="[data-grid-avoid]"
+            className="opacity-80"
           />
 
-          <div className="relative border-l-2 border-rule md:border-none max-w-4xl mx-auto ml-4 md:ml-auto">
-            {studioTimeline.map((item, idx) => {
-              const isEven = idx % 2 === 0;
-              return (
-                <div
-                  key={item.year}
-                  className={`mb-12 relative flex flex-col md:flex-row items-start ${
-                    isEven ? "md:flex-row-reverse" : ""
-                  }`}
-                >
-                  {/* Timeline dot / year on desktop */}
-                  <div className="absolute -left-[17px] md:left-1/2 md:-translate-x-1/2 top-1.5 w-8 h-8 rounded-full bg-sage-300 border-4 border-bg flex items-center justify-center text-[10px] font-bold text-ink z-10 shadow-sm">
-                    {item.year}
-                  </div>
+          <div className="relative z-10 space-y-12">
+            <div data-grid-avoid>
+              <SectionHeader
+                align="center"
+                label="Studio Milestones"
+                heading="Our Journey from 2020 to Present"
+                description="A timeline of consistent growth, architectural innovation, and expanding cross-border impact."
+              />
+            </div>
 
-                  {/* Card Content */}
-                  <div className={`w-full md:w-[46%] ${isEven ? "md:text-right" : "md:text-left"} pl-6 md:pl-0`}>
-                    <div className="bg-surface rounded-[24px] p-6 sm:p-8 border border-rule shadow-xs hover:border-sage-500/40 transition-colors">
-                      <span className="text-xs font-bold uppercase tracking-wider text-sage-700 mb-1 inline-block">
-                        {item.year} — {item.subtitle}
-                      </span>
-                      <h3 className="text-xl font-bold text-ink mb-3">{item.title}</h3>
-                      <p className="text-body text-xs sm:text-sm leading-relaxed mb-4">
-                        {item.description}
-                      </p>
-                      <ul className={`space-y-2 text-xs font-medium text-ink ${isEven ? "md:items-end" : ""}`}>
-                        {item.achievements.map((ach, aIdx) => (
-                          <li
-                            key={aIdx}
-                            className={`flex items-start gap-2 ${
-                              isEven ? "md:flex-row-reverse md:text-right" : ""
-                            }`}
-                          >
-                            <CheckCircle2 className="w-3.5 h-3.5 text-sage-700 shrink-0 mt-0.5" />
-                            <span>{ach}</span>
-                          </li>
-                        ))}
-                      </ul>
+            <div className="relative border-l-2 border-rule md:border-none md:before:absolute md:before:top-4 md:before:bottom-4 md:before:left-1/2 md:before:-translate-x-1/2 md:before:w-0.5 md:before:bg-rule/80 max-w-4xl mx-auto ml-4 md:ml-auto">
+              {studioTimeline.map((item, idx) => {
+                const isEven = idx % 2 === 0;
+                return (
+                  <div
+                    key={item.year}
+                    className={`mb-12 last:mb-0 relative flex flex-col md:flex-row items-start ${
+                      isEven ? "md:flex-row-reverse" : ""
+                    }`}
+                  >
+                    {/* Timeline dot / year on desktop */}
+                    <div className="absolute -left-[17px] md:left-1/2 md:-translate-x-1/2 top-1.5 w-8 h-8 rounded-full bg-sage-300 border-4 border-surface flex items-center justify-center text-[10px] font-bold text-ink z-10 shadow-sm">
+                      {item.year}
+                    </div>
+
+                    {/* Card Content */}
+                    <div
+                      data-grid-avoid
+                      className={`w-full md:w-[46%] ${
+                        isEven ? "md:text-right" : "md:text-left"
+                      } pl-6 md:pl-0`}
+                    >
+                      <div className="bg-surface/95 backdrop-blur-xs rounded-[24px] p-6 sm:p-8 border border-rule shadow-xs hover:border-sage-500/50 hover:shadow-md transition-all duration-300">
+                        <span className="text-xs font-bold uppercase tracking-wider text-sage-700 mb-1 inline-block">
+                          {item.year} — {item.subtitle}
+                        </span>
+                        <h3 className="text-xl font-bold text-ink mb-3">{item.title}</h3>
+                        <p className="text-body text-xs sm:text-sm leading-relaxed mb-4">
+                          {item.description}
+                        </p>
+                        <ul
+                          className={`space-y-2 text-xs font-medium text-ink ${
+                            isEven ? "md:items-end" : ""
+                          }`}
+                        >
+                          {item.achievements.map((ach, aIdx) => (
+                            <li
+                              key={aIdx}
+                              className={`flex items-start gap-2 ${
+                                isEven ? "md:flex-row-reverse md:text-right" : ""
+                              }`}
+                            >
+                              <CheckCircle2 className="w-3.5 h-3.5 text-sage-700 shrink-0 mt-0.5" />
+                              <span>{ach}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
                     </div>
                   </div>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
         </section>
 
