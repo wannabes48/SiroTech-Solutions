@@ -45,7 +45,6 @@ const footerNavigation = {
     { label: "About Us", href: "/about" },
     { label: "Our Process", href: "/process" },
     { label: "Testimonials", href: "/testimonials" },
-    { label: "Careers", href: "/careers" },
     { label: "Technical Blog", href: "/blog" },
     { label: "Frequently Asked", href: "/faq" },
     { label: "Case Studies", href: "/work" },
