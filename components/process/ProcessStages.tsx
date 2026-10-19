@@ -72,7 +72,7 @@ export const processStages: Stage[] = [
     whatWeDo: [
       "Database migration setup, indexing, and connection pooling",
       "Full-stack Next.js / React Native application development",
-      "Third-party API integration (M-Pesa STK, Stripe, Auth, Resend)",
+      "Third-party API integration (Paystack Checkout, Auth, Resend)",
       "Automated unit testing & CI/CD deployment pipelines",
       "Weekly live staging URL updates for your review",
     ],

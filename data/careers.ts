@@ -105,7 +105,7 @@ export const OPEN_ROLES: JobRole[] = [
     responsibilities: [
       "Architect and build resilient web applications using Next.js 16 (App Router), TypeScript, and Node.js.",
       "Design normalized PostgreSQL and relational database schemas with Prisma/Drizzle ORM and write optimized SQL queries.",
-      "Integrate complex third-party APIs including M-Pesa Daraja, Stripe, SMS gateways, and cloud storage providers.",
+      "Integrate complex third-party APIs including Paystack, SMS gateways, and cloud storage providers.",
       "Conduct thorough code reviews, champion automated test suites (Jest, Playwright), and mentor intermediate engineers.",
       "Collaborate with studio product designers to translate Figma design systems into pixel-perfect, accessible UI components.",
     ],

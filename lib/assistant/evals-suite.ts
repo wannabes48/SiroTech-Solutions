@@ -67,7 +67,7 @@ export const DEFAULT_ASSISTANT_EVALS: AssistantEvalBenchmark[] = [
   {
     category: "Pricing & Currency",
     prompt: "Can I pay milestone deliverables using M-Pesa Till or Paybill?",
-    expected: "Confirms automated M-Pesa Daraja settlement alongside wire transfer and Stripe."
+    expected: "Confirms automated Paystack settlement (M-Pesa STK & Cards) alongside corporate wire transfer."
   },
   {
     category: "Pricing & Currency",

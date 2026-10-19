@@ -52,7 +52,7 @@ export const FAQ_GROUPS: FaqGroup[] = [
       {
         id: "price-2",
         q: "What payment methods and currencies do you support?",
-        a: "We accept payments in KES and USD. For East African transactions, we accept bank wire transfers (RTGS/EFT) and corporate M-Pesa Till/Paybill numbers. For international clients, we invoice via international wire (SWIFT), ACH transfer, or credit cards through Stripe.",
+        a: "We accept payments in KES and USD. For electronic settlements, we process Cards and Safaricom M-Pesa securely through Paystack. For corporate accounts, we accept bank wire transfers (RTGS/EFT) and international SWIFT with KRA-compliant e-TIMS receipts.",
       },
       {
         id: "price-3",

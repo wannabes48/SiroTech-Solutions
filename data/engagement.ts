@@ -93,7 +93,7 @@ export const engagementFaqs = [
   },
   {
     q: "What payment currencies do you accept for international clients?",
-    a: "We support both Kenya Shillings (via M-Pesa or bank transfer with KRA e-TIMS invoices) and international currencies (USD, CAD, EUR) processed securely via Stripe.",
+    a: "We support both Kenya Shillings (via Paystack M-Pesa/Card or bank transfer with KRA e-TIMS invoices) and international currencies (USD, CAD, EUR) processed securely via Paystack.",
   },
   {
     q: "What happens if a Fixed Scope project takes longer than expected?",

@@ -78,7 +78,7 @@ export const projectPricingTiers: PricingTier[] = [
     name: "Custom Web App / eCommerce",
     badge: "High Growth",
     description: "For startups and scaling brands requiring custom logic, transactional checkout, user dashboards, and APIs.",
-    scope: "Full-stack Next.js/React architecture, custom backend APIs, authentication, and secure payment integrations (M-Pesa / Stripe).",
+    scope: "Full-stack Next.js/React architecture, custom backend APIs, authentication, and secure payment integrations (Paystack / Cards & M-Pesa).",
     prices: {
       KES: { display: "KSh 70K – 150K+", starting: 70000, range: "KSh 70,000 – 150,000+" },
       USD: { display: "$550 – $1,200+", starting: 550, range: "$550 – $1,200+" },
@@ -87,7 +87,7 @@ export const projectPricingTiers: PricingTier[] = [
     timeline: "3–6 weeks",
     deliverables: [
       "Custom full-stack Next.js application & database schema",
-      "M-Pesa Express STK push + Stripe card checkout",
+      "Paystack unified checkout (Card & M-Pesa STK push)",
       "User authentication, role-based access & client portal",
       "Admin back-office dashboard & automated reports",
       "Custom REST / GraphQL APIs & third-party integrations",
@@ -161,7 +161,7 @@ export const pricingFaqs = [
   },
   {
     q: "Which payment methods do you accept?",
-    a: "We support M-Pesa (Buy Goods / Till & Paybill), direct Kenyan bank transfers (KRA compliant e-TIMS invoices available), and international debit/credit cards via Stripe.",
+    a: "We support Paystack (Cards & Safaricom M-Pesa STK push) alongside direct bank wire transfers (with KRA-compliant e-TIMS invoices available).",
   },
   {
     q: "Are there any hidden recurring fees?",
