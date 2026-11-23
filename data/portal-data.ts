@@ -919,7 +919,7 @@ export interface TeamMember {
   email: string;
   role: OrgRole;
   title: string;
-  status: "ACTIVE" | "INVITED";
+  status: "ACTIVE" | "INVITED" | "EXPIRED" | "DISABLED";
   joinedAt: string;
   avatarUrl?: string;
 }

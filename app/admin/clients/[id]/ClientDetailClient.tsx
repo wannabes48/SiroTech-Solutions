@@ -14,8 +14,11 @@ import {
   reactivateOrgAction,
   deleteOrganizationAction,
   deleteProjectAction,
-  resendClientPortalInviteAction
+  resendClientPortalInviteAction,
+  revokeAccessAction,
+  setAccountActiveAction
 } from "@/app/admin/actions";
+import { ACCESS_STATUS_LABEL, type AccessStatus } from "@/lib/access-status";
 import { AdminStatusPill } from "@/components/admin/AdminStatusPill";
 import {
   Building2,
@@ -101,22 +104,31 @@ export function ClientDetailClient({ client }: { client: any }) {
     e.preventDefault();
     if (!inviteEmail.trim() || !inviteName.trim()) return;
 
+    const targetEmail = inviteEmail.trim();
     startTransition(async () => {
-      await inviteOrgUserAction(client.id, inviteEmail.trim(), inviteName.trim(), inviteRole);
-      // Also dispatch the portal invitation email
-      await resendClientPortalInviteAction({
-        orgId: client.id,
-        email: inviteEmail.trim(),
-        name: inviteName.trim(),
-        role: inviteRole
-      });
+      // Creates the profile + membership, then sends an invite or sign-in link; shows the real outcome.
+      const res = await inviteOrgUserAction(client.id, targetEmail, inviteName.trim(), inviteRole);
       setShowInviteModal(false);
       setInviteEmail("");
       setInviteName("");
-      showToast(`User added and invitation email dispatched to ${inviteEmail.trim()}!`);
+      startCooldown(targetEmail, (res as any)?.retryAfterSeconds || 60);
+      if ((res as any)?.error) showToast((res as any).error, "error");
+      else showToast(`${(res as any)?.message || "Invite sent"} to ${targetEmail}.`);
       router.refresh();
     });
   };
+
+  // Visible 60s resend cooldown per address (matches Supabase's per-address interval)
+  const [cooldowns, setCooldowns] = useState<Record<string, number>>({});
+  const startCooldown = (email: string, seconds = 60) => setCooldowns((c) => ({ ...c, [email]: seconds }));
+  React.useEffect(() => {
+    if (!Object.values(cooldowns).some((v) => v > 0)) return;
+    const t = setTimeout(
+      () => setCooldowns((prev) => Object.fromEntries(Object.entries(prev).map(([k, v]) => [k, Math.max(0, v - 1)]))),
+      1000
+    );
+    return () => clearTimeout(t);
+  }, [cooldowns]);
 
   const handleSendInviteToUser = (email: string, name?: string, role?: string) => {
     setInvitingEmail(email);
@@ -129,10 +141,32 @@ export function ClientDetailClient({ client }: { client: any }) {
       });
       setInvitingEmail(null);
       if (res?.success) {
-        showToast(`Portal invitation link emailed to ${email}!`);
+        startCooldown(email);
+        showToast(`${res.message || "Email sent"} to ${email}.`);
+        router.refresh();
       } else {
-        showToast(`Failed to send invitation to ${email}.`, "error");
+        if (res?.retryAfterSeconds) startCooldown(email, res.retryAfterSeconds);
+        showToast(res?.error || `Failed to send to ${email}.`, "error");
       }
+    });
+  };
+
+  const handleRevokeAccess = (userId: string, label: string) => {
+    if (!confirm(`Revoke ${label}'s access? An unused invite link stops working; an active account is disabled.`)) return;
+    startTransition(async () => {
+      const res = await revokeAccessAction(userId);
+      if (res.error) showToast(res.error, "error");
+      else showToast(res.deleted ? "Invitation revoked." : "Account disabled.");
+      router.refresh();
+    });
+  };
+
+  const handleEnableAccess = (userId: string) => {
+    startTransition(async () => {
+      const res = await setAccountActiveAction(userId, true);
+      if (res.error) showToast(res.error, "error");
+      else showToast("Account enabled.");
+      router.refresh();
     });
   };
 
@@ -494,22 +528,70 @@ export function ClientDetailClient({ client }: { client: any }) {
                     </select>
                   </div>
                   <div className="text-muted text-[11px] truncate">{u.email}</div>
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] text-muted">
+                    <span
+                      className={`px-1.5 py-0.5 rounded-full font-bold border ${
+                        u.status === "ACTIVE"
+                          ? "bg-emerald-50 text-emerald-800 border-emerald-200"
+                          : u.status === "EXPIRED"
+                          ? "bg-red-50 text-red-800 border-red-200"
+                          : u.status === "DISABLED" || u.status === "NOT_INVITED"
+                          ? "bg-white text-muted border-rule"
+                          : "bg-amber-50 text-amber-800 border-amber-200"
+                      }`}
+                    >
+                      {ACCESS_STATUS_LABEL[u.status as AccessStatus] || "Unknown"}
+                    </span>
+                    {u.invited_at && <span>Invited {new Date(u.invited_at).toLocaleDateString()}</span>}
+                    <span>Last sign-in {u.last_login_at ? new Date(u.last_login_at).toLocaleDateString() : "never"}</span>
+                  </div>
 
                   <div className="flex items-center justify-between pt-1 border-t border-rule/40 text-[11px]">
+                    {u.status === "DISABLED" ? (
+                      <button
+                        type="button"
+                        disabled={isPending}
+                        onClick={() => handleEnableAccess(u.id)}
+                        className="font-semibold text-emerald-800 hover:text-emerald-900 cursor-pointer disabled:opacity-50"
+                      >
+                        Enable access
+                      </button>
+                    ) : (
                     <button
                       type="button"
-                      disabled={isPending || invitingEmail === u.email}
+                      disabled={isPending || invitingEmail === u.email || (cooldowns[u.email] || 0) > 0}
                       onClick={() => handleSendInviteToUser(u.email, u.name, u.org_role)}
                       className="font-semibold text-emerald-800 hover:text-emerald-900 inline-flex items-center gap-1 cursor-pointer disabled:opacity-50"
-                      title="Send or resend portal invitation link"
+                      title="Sends an invite to new people, or a sign-in link to existing accounts"
                     >
                       {invitingEmail === u.email ? (
                         <Loader2 className="w-3 h-3 animate-spin" />
                       ) : (
                         <Mail className="w-3 h-3" />
                       )}
-                      <span>Send Portal Invite</span>
+                      <span>
+                        {(cooldowns[u.email] || 0) > 0
+                          ? `Resend in ${cooldowns[u.email]}s`
+                          : u.status === "ACTIVE"
+                          ? "Send sign-in link"
+                          : u.status === "NOT_INVITED"
+                          ? "Send invite"
+                          : "Resend invite"}
+                      </span>
                     </button>
+                    )}
+
+                    {(u.status === "INVITED" || u.status === "EXPIRED" || u.status === "ACTIVE") && (
+                      <button
+                        type="button"
+                        disabled={isPending}
+                        onClick={() => handleRevokeAccess(u.id, u.name || u.email)}
+                        className="text-muted hover:text-red-700 font-semibold cursor-pointer"
+                        title={u.status === "ACTIVE" ? "Disable sign-in" : "Revoke the unused invitation"}
+                      >
+                        {u.status === "ACTIVE" ? "Disable" : "Revoke"}
+                      </button>
+                    )}
 
                     <button
                       type="button"

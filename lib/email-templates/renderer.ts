@@ -1,6 +1,7 @@
 import { SYSTEM_EMAIL_TEMPLATES } from "./registry";
 import { EmailRenderResult, EmailTemplateDefinition } from "./types";
 import { interpolate } from "./interpolator";
+import { sendMail } from "@/lib/email";
 import { query } from "@/lib/db";
 
 /**
@@ -68,7 +69,8 @@ export async function sendEmailWithLog({
   data = {},
   customSubject,
   customBody,
-  metadata = {},
+  from,
+  replyTo,
 }: {
   templateKey: string;
   to: string;
@@ -76,66 +78,36 @@ export async function sendEmailWithLog({
   customSubject?: string;
   customBody?: string;
   metadata?: Record<string, any>;
+  from?: string;
+  replyTo?: string;
 }): Promise<{ success: boolean; messageId?: string; error?: string }> {
   try {
-    const rendered = renderEmail(templateKey, data, customSubject, customBody);
-    const resendApiKey = process.env.RESEND_API_KEY;
-
-    let providerId = `local_msg_${Date.now().toString(36)}`;
-    let status = "DELIVERED";
-    let errorMessage: string | null = null;
-
-    if (resendApiKey) {
+    // Apply subject/body edits saved in Admin > Email unless the caller overrides them.
+    if (customSubject === undefined || customBody === undefined) {
       try {
-        const fromAddress = process.env.EMAIL_FROM || "SiroTech Solutions <notifications@sirotech.co.ke>";
-        const res = await fetch("https://api.resend.com/emails", {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${resendApiKey}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            from: fromAddress,
-            to: [to],
-            subject: rendered.subject,
-            html: rendered.html,
-            text: rendered.text,
-          }),
-        });
-
-        const resData = await res.json();
-        if (res.ok && resData.id) {
-          providerId = resData.id;
-        } else {
-          status = "FAILED";
-          errorMessage = resData.message || `Resend error code ${res.status}`;
-          console.warn("[Resend Dispatch Warning]:", errorMessage);
+        const o = await query<{ subject: string | null; body: string | null }>(
+          "SELECT subject, body FROM email_templates WHERE key = $1 LIMIT 1",
+          [normalizeTemplateKey(templateKey)]
+        );
+        if (o.rows[0]) {
+          customSubject ??= o.rows[0].subject || undefined;
+          customBody ??= o.rows[0].body || undefined;
         }
-      } catch (sendErr: any) {
-        status = "FAILED";
-        errorMessage = sendErr?.message || "Network error contacting Resend API";
-        console.error("[Resend Network Error]:", sendErr);
+      } catch {
+        // table missing or unavailable: fall back to built-in copy
       }
-    } else {
-      console.log(`[Email Simulated Dispatch] To: ${to} | Subject: "${rendered.subject}" | Provider ID: ${providerId}`);
     }
-
-    // Record in email_logs
-    try {
-      await query(
-        `INSERT INTO email_logs (to_email, template, subject, status, provider_id, error, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
-        [to, templateKey, rendered.subject, status, providerId, errorMessage]
-      );
-    } catch (logErr) {
-      console.warn("[Email Log Record Warning]:", logErr);
-    }
-
-    return {
-      success: status === "DELIVERED",
-      messageId: providerId,
-      error: errorMessage || undefined,
-    };
+    const rendered = renderEmail(templateKey, data, customSubject, customBody);
+    const result = await sendMail({
+      to,
+      subject: rendered.subject,
+      html: rendered.html,
+      text: rendered.text,
+      from,
+      replyTo,
+      template: templateKey,
+    });
+    return { success: result.ok, messageId: result.id, error: result.error };
   } catch (err: any) {
     console.error("[sendEmailWithLog Error]:", err);
     return {

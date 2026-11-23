@@ -21,7 +21,7 @@ export async function POST(request: Request) {
           return NextResponse.json(
             {
               error:
-                "Too many submissions from this connection. Please wait 60 seconds or email hello@sirotech.com directly.",
+                "Too many submissions from this connection. Please wait 60 seconds or email hello@sirotech.co.ke directly.",
             },
             {
               status: 429,
@@ -186,16 +186,16 @@ export async function POST(request: Request) {
       );
     }
 
-    // 6. Notifications (Team alert & Auto-reply)
-    const emailSubject =
-      data.source === "assistant"
-        ? `New enquiry via assistant: ${data.need}`
-        : `New engineering enquiry: ${data.need}`;
-    console.log(`[Email Dispatch] ${emailSubject} to hello@sirotech.com`);
-    if (data.transcript && data.transcript.length > 0) {
-      console.log(`[Email Attachment] Attached chat transcript (${data.transcript.length} turns)`);
+    // 5. Emails: team notification (reply-to = visitor) + auto-reply (reply-to = hello@).
+    // The lead is already saved; a failure here is flagged in admin and retried by cron.
+    if (newLeadId) {
+      try {
+        const { processLeadEmails } = await import("@/lib/lead-emails");
+        await processLeadEmails(newLeadId);
+      } catch (mailErr) {
+        console.error("[Contact lead emails error] lead kept, will retry:", mailErr);
+      }
     }
-    console.log(`[Auto-Reply Sent] Confirmation sent to client: ${data.email}`);
 
     return NextResponse.json({
       success: true,
@@ -207,7 +207,7 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         error:
-          "A network or server error occurred. Please try again or reach out directly to hello@sirotech.com.",
+          "A network or server error occurred. Please try again or reach out directly to hello@sirotech.co.ke.",
       },
       { status: 500 }
     );

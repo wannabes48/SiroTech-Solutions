@@ -121,6 +121,19 @@ function AccountContent() {
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteTitle, setInviteTitle] = useState("");
+  // Visible 60s resend cooldown per address (matches Supabase's per-address interval)
+  const [resendCooldowns, setResendCooldowns] = useState<Record<string, number>>({});
+  const startResendCooldown = (email: string, seconds = 60) =>
+    setResendCooldowns((prev) => ({ ...prev, [email]: seconds }));
+  useEffect(() => {
+    if (!Object.values(resendCooldowns).some((v) => v > 0)) return;
+    const t = setTimeout(() => {
+      setResendCooldowns((prev) =>
+        Object.fromEntries(Object.entries(prev).map(([k, v]) => [k, Math.max(0, v - 1)]))
+      );
+    }, 1000);
+    return () => clearTimeout(t);
+  }, [resendCooldowns]);
 
   // Notifications State
   const [notifMessages, setNotifMessages] = useState(true);
@@ -215,8 +228,9 @@ function AccountContent() {
       if (res.error) {
         setToast({ message: res.error, type: "error" });
       } else {
-        setUser((prev) => ({ ...prev, name: name.trim(), email: email.trim(), phone: phone.trim(), timezone }));
-        setToast({ message: "Personal profile details updated successfully.", type: "success" });
+        // A changed email only takes effect after the person confirms it from their inbox.
+        setUser((prev) => ({ ...prev, name: name.trim(), phone: phone.trim(), timezone }));
+        setToast({ message: (res as any).message || "Personal profile details updated successfully.", type: "success" });
         router.refresh();
       }
     } catch (err: any) {
@@ -276,14 +290,17 @@ function AccountContent() {
       const res = await inviteTeamMemberAction(formData);
       setInvitingMember(false);
 
+      // Show the real outcome: "Invite sent", "Sign-in link sent", or the exact error.
+      if (res.invite) {
+        setTeamMembers((prev) => [...prev, res.invite as any]);
+        setInviteEmail("");
+        setInviteTitle("");
+      }
       if (res.error) {
         setToast({ message: res.error, type: "error" });
       } else if (res.invite) {
-        setTeamMembers((prev) => [...prev, res.invite as any]);
-        const targetEmail = inviteEmail.trim();
-        setInviteEmail("");
-        setInviteTitle("");
-        setToast({ message: `Invitation dispatched to ${targetEmail}.`, type: "success" });
+        startResendCooldown(res.invite.email);
+        setToast({ message: `${res.message || "Invite sent"} to ${res.invite.email}.`, type: "success" });
       }
     } catch (err: any) {
       setInvitingMember(false);
@@ -328,9 +345,11 @@ function AccountContent() {
       setResendingEmail(null);
 
       if (res.error) {
+        if (res.retryAfterSeconds) startResendCooldown(targetEmail, res.retryAfterSeconds);
         setToast({ message: res.error, type: "error" });
       } else {
-        setToast({ message: `Invitation email re-dispatched to ${targetEmail}.`, type: "success" });
+        startResendCooldown(targetEmail);
+        setToast({ message: `${res.message || "Email sent"} to ${targetEmail}.`, type: "success" });
       }
     } catch (err: any) {
       setResendingEmail(null);
@@ -793,7 +812,17 @@ function AccountContent() {
                       </span>
                       {member.status === "INVITED" && (
                         <span className="px-2 py-0.2 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
-                          Pending Invite
+                          Invited
+                        </span>
+                      )}
+                      {member.status === "EXPIRED" && (
+                        <span className="px-2 py-0.2 rounded-full text-[10px] font-bold bg-red-50 text-red-800 border border-red-200">
+                          Link not used
+                        </span>
+                      )}
+                      {member.status === "DISABLED" && (
+                        <span className="px-2 py-0.2 rounded-full text-[10px] font-bold bg-surface text-muted border border-rule">
+                          Disabled
                         </span>
                       )}
                     </div>
@@ -805,15 +834,17 @@ function AccountContent() {
 
                 {isOwner && member.email !== user.email && (
                   <div className="flex items-center gap-2 self-end sm:self-center">
-                    {member.status === "INVITED" && (
+                    {(member.status === "INVITED" || member.status === "EXPIRED") && (
                       <button
                         type="button"
-                        disabled={resendingEmail === member.email}
+                        disabled={resendingEmail === member.email || (resendCooldowns[member.email] || 0) > 0}
                         onClick={() => handleResendInvite(member.email)}
                         className="px-3 py-1 rounded-full border border-rule hover:bg-surface text-ink text-xs font-semibold cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
                       >
                         {resendingEmail === member.email && <Loader2 className="w-3 h-3 animate-spin" />}
-                        <span>Resend</span>
+                        <span>
+                          {(resendCooldowns[member.email] || 0) > 0 ? `Resend in ${resendCooldowns[member.email]}s` : "Resend"}
+                        </span>
                       </button>
                     )}
                     <button

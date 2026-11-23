@@ -4,6 +4,7 @@ import { mainUrl } from "@/lib/hosts";
 import React, { useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Mail, Loader2, CheckCircle2, AlertCircle, ArrowRight } from "lucide-react";
+import { forgotPasswordAction } from "../actions";
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("");
@@ -22,7 +23,13 @@ export default function ForgotPasswordPage() {
 
     setLoading(true);
     try {
-      await new Promise((r) => setTimeout(r, 700));
+      const fd = new FormData();
+      fd.set("email", email.trim());
+      const res = await forgotPasswordAction(fd);
+      if (!res.ok) {
+        setError(res.error);
+        return;
+      }
       setSubmitted(true);
     } catch (err: any) {
       setError("Unable to process reset request. Please try again.");
@@ -56,13 +63,6 @@ export default function ForgotPasswordPage() {
             If an account exists for <span className="font-semibold text-ink">{email}</span>, you will receive password reset instructions within a few moments.
           </p>
           <div className="mt-6 flex flex-col gap-2.5">
-            <Link
-              href={`/reset-password?email=${encodeURIComponent(email)}&token=demo_token_${Date.now()}`}
-              className="w-full py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs flex items-center justify-center gap-2 transition-colors"
-            >
-              <span>Set New Password (Demo Shortcut)</span>
-              <ArrowRight className="w-4 h-4" />
-            </Link>
             <button
               type="button"
               onClick={() => {

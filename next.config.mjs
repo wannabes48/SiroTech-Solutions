@@ -71,6 +71,15 @@ const nextConfig = {
         source: "/:path*",
         headers: securityHeaders,
       },
+      // One-time auth token in the URL: never cache it, never leak it via Referer.
+      // (Later entries override earlier ones for the same header key.)
+      {
+        source: "/auth/confirm",
+        headers: [
+          { key: "Cache-Control", value: "no-store, max-age=0" },
+          { key: "Referrer-Policy", value: "no-referrer" },
+        ],
+      },
     ];
   },
   async redirects() {

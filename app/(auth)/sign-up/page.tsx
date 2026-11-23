@@ -5,7 +5,7 @@ import React, { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowRight, Mail, Lock, User, Building, AlertCircle, Eye } from "lucide-react";
-import { signUpAction } from "@/app/portal/actions";
+import { signUpAction } from "../actions";
 import ConcentricRing from "@/components/ui/concentric-ring";
 
 export default function SignUpPage() {
@@ -91,10 +91,11 @@ export default function SignUpPage() {
     startTransition(async () => {
       try {
         const result = await signUpAction(formData);
-        if (result?.error) {
+        if (!result.ok) {
           setError(result.error);
-        } else if (result?.success) {
-          router.push(portalPath());
+        } else {
+          // Usually /verify-email (Supabase sends a confirmation email); /welcome if confirmation is off.
+          router.push(result.redirect || portalPath());
           router.refresh();
         }
       } catch (err: any) {

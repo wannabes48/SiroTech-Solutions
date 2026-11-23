@@ -1,5 +1,6 @@
 import { PORTAL_URL } from "@/lib/hosts";
-import { getSessionUser } from "./auth-server";
+import { getAuthContext, getSessionUser } from "./auth-server";
+import { isMfaVerified } from "./mfa";
 import { query } from "./db";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
@@ -17,7 +18,7 @@ export * from "./admin-permissions-client";
 export async function requireStaffUser(requiredPermission?: string): Promise<StaffSessionUser> {
   const user = await getSessionUser();
   if (!user) {
-    redirect("/sign-in");
+    redirect((await getAuthContext()) ? "/sign-in?error=not-allowed" : "/sign-in");
   }
 
   // Ensure user is staff or admin
@@ -26,20 +27,28 @@ export async function requireStaffUser(requiredPermission?: string): Promise<Sta
   }
 
   // Fetch staff_role and totp_enabled from database
-  let staffRole: StaffRole = "ADMIN";
+  let staffRole: StaffRole = "SUPPORT"; // least privilege if the lookup fails
   let totpEnabled = false;
 
   try {
     const res = await query(
-      "SELECT staff_role, totp_enabled FROM users WHERE id = $1",
+      "SELECT staff_role, totp_enabled, totp_secret FROM users WHERE id = $1",
       [user.id]
     );
     if (res.rows.length > 0) {
       staffRole = (res.rows[0].staff_role as StaffRole) || (user.role === "ADMIN" ? "ADMIN" : "SUPPORT");
-      totpEnabled = Boolean(res.rows[0].totp_enabled);
+      totpEnabled = Boolean(res.rows[0].totp_enabled && res.rows[0].totp_secret);
     }
   } catch (err) {
-    console.warn("Could not query user staff_role, defaulting to ADMIN for verified staff session", err);
+    console.warn("Could not query user staff_role, defaulting to SUPPORT", err);
+  }
+
+  // Two-step: a Supabase session alone is not enough when the account has an authenticator.
+  if (totpEnabled) {
+    const ctx = await getAuthContext();
+    if (!ctx || !(await isMfaVerified(ctx.authUserId, ctx.sessionId))) {
+      redirect("/two-step");
+    }
   }
 
   const staffUser: StaffSessionUser = {

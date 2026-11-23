@@ -1,122 +1,159 @@
 "use client";
 
-import React, { useState, useTransition } from "react";
-import { Shield, Lock, UserPlus, KeyRound, Sparkles, RefreshCw, Check, AlertCircle } from "lucide-react";
-import { inviteStaffUserAction, changeStaffRoleAction, revokeStaffSessionsAction } from "@/app/admin/actions";
+import React, { useEffect, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { Lock, Unlock, UserPlus, KeyRound, Sparkles, AlertCircle, Mail, Ban, RotateCcw, Trash2 } from "lucide-react";
+import {
+  inviteStaffUserAction,
+  changeStaffRoleAction,
+  resendAccessAction,
+  revokeAccessAction,
+  setAccountActiveAction,
+  resetTwoStepAction,
+} from "@/app/admin/actions";
+import { ACCESS_STATUS_LABEL, type AccessStatus } from "@/lib/access-status";
+
+type StaffRole = "ADMIN" | "MANAGER" | "EDITOR" | "SUPPORT" | "FINANCE";
 
 interface StaffUser {
   id: string;
   name: string;
   email: string;
   role: string;
-  staff_role: "ADMIN" | "MANAGER" | "EDITOR" | "SUPPORT";
+  staff_role: StaffRole;
   totp_enabled: boolean;
-  last_login_at?: string;
+  last_login_at?: string | null;
+  invited_at?: string | null;
   created_at: string;
+  status: AccessStatus;
 }
 
 const roleBadges: Record<string, string> = {
   ADMIN: "bg-emerald-100 text-emerald-800 border-emerald-200",
   MANAGER: "bg-sage-100 text-ink border-sage-300",
   EDITOR: "bg-blue-50 text-blue-800 border-blue-200",
-  SUPPORT: "bg-amber-50 text-amber-800 border-amber-200"
+  SUPPORT: "bg-amber-50 text-amber-800 border-amber-200",
+  FINANCE: "bg-purple-100 text-purple-900 border-purple-200",
 };
 
-export function AdminUsersClient({ initialStaff }: { initialStaff: StaffUser[] }) {
+const statusBadges: Record<AccessStatus, string> = {
+  ACTIVE: "bg-emerald-50 text-emerald-800 border-emerald-200",
+  INVITED: "bg-amber-50 text-amber-800 border-amber-200",
+  EXPIRED: "bg-red-50 text-red-800 border-red-200",
+  DISABLED: "bg-surface text-muted border-rule",
+  NOT_INVITED: "bg-surface text-muted border-rule",
+};
+
+const fmt = (d?: string | null) => (d ? new Date(d).toLocaleString([], { dateStyle: "medium", timeStyle: "short" }) : "—");
+
+export function AdminUsersClient({
+  initialStaff,
+  currentUserId,
+  isAdmin,
+}: {
+  initialStaff: StaffUser[];
+  currentUserId: string;
+  isAdmin: boolean;
+}) {
+  const router = useRouter();
   const [staffList, setStaffList] = useState<StaffUser[]>(initialStaff);
   const [inviteModalOpen, setInviteModalOpen] = useState(false);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
-  const [role, setRole] = useState<"ADMIN" | "MANAGER" | "EDITOR" | "SUPPORT">("SUPPORT");
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [role, setRole] = useState<StaffRole>("SUPPORT");
+  const [inviteResult, setInviteResult] = useState<{ ok: boolean; text: string } | null>(null);
+  const [toast, setToast] = useState<{ ok: boolean; text: string } | null>(null);
+  const [cooldowns, setCooldowns] = useState<Record<string, number>>({});
   const [isPending, startTransition] = useTransition();
 
-  const showToast = (msg: string) => {
-    setToastMessage(msg);
-    setTimeout(() => setToastMessage(null), 4000);
+  useEffect(() => setStaffList(initialStaff), [initialStaff]);
+
+  // Visible 60s resend cooldown per person
+  useEffect(() => {
+    if (!Object.values(cooldowns).some((v) => v > 0)) return;
+    const t = setTimeout(
+      () => setCooldowns((prev) => Object.fromEntries(Object.entries(prev).map(([k, v]) => [k, Math.max(0, v - 1)]))),
+      1000
+    );
+    return () => clearTimeout(t);
+  }, [cooldowns]);
+
+  const showToast = (ok: boolean, text: string) => {
+    setToast({ ok, text });
+    setTimeout(() => setToast(null), 6000);
   };
 
   const handleInvite = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim() || !email.trim()) return;
+    setInviteResult(null);
 
     startTransition(async () => {
-      const res = await inviteStaffUserAction({
-        name,
-        email,
-        staffRole: role
-      });
-
-      if (res?.error) {
-        showToast(`Invite failed: ${res.error}`);
+      const res = await inviteStaffUserAction({ name, email, staffRole: role });
+      if (res.userId) {
+        setCooldowns((c) => ({ ...c, [res.userId!]: res.retryAfterSeconds || 60 }));
+        router.refresh();
+      }
+      if (res.error) {
+        // e.g. "Email rate limit reached, try again in 12 minutes" — shown exactly as returned
+        setInviteResult({ ok: false, text: res.error });
       } else {
-        showToast(`Staff access granted for ${email}`);
-        setStaffList([
-          ...staffList,
-          {
-            id: `usr-${Date.now()}`,
-            name: name.trim(),
-            email: email.trim(),
-            role: "STAFF",
-            staff_role: role,
-            totp_enabled: false,
-            created_at: new Date().toISOString()
-          }
-        ]);
+        setInviteResult({ ok: true, text: `${res.message} to ${email.trim()}.` });
         setName("");
         setEmail("");
-        setInviteModalOpen(false);
       }
     });
   };
 
-  const handleChangeRole = (userId: string, newRole: string) => {
+  const run = (fn: () => Promise<{ success?: boolean; error?: string; message?: string; retryAfterSeconds?: number }>, okText: string, userId?: string) =>
+    startTransition(async () => {
+      const res = await fn();
+      if (res.error) {
+        if (userId && res.retryAfterSeconds) setCooldowns((c) => ({ ...c, [userId]: res.retryAfterSeconds! }));
+        showToast(false, res.error);
+      } else {
+        if (userId) setCooldowns((c) => ({ ...c, [userId]: 60 }));
+        showToast(true, res.message || okText);
+        router.refresh();
+      }
+    });
+
+  const handleChangeRole = (userId: string, newRole: string) =>
     startTransition(async () => {
       const res = await changeStaffRoleAction(userId, newRole);
-      if (res?.error) {
-        showToast(`Role change failed: ${res.error}`);
-      } else {
-        showToast("Staff permission boundary updated.");
-        setStaffList((prev) =>
-          prev.map((u) => (u.id === userId ? { ...u, staff_role: newRole as any } : u))
-        );
-      }
+      if (res?.error) return showToast(false, `Role change failed: ${res.error}`);
+      showToast(true, "Staff permission preset updated.");
+      setStaffList((prev) => prev.map((u) => (u.id === userId ? { ...u, staff_role: newRole as StaffRole } : u)));
     });
-  };
-
-  const handleRevokeSessions = (userId: string, userName: string) => {
-    if (!confirm(`Revoke all active web & API sessions for ${userName}? They will be forced to re-authenticate with TOTP.`)) return;
-
-    startTransition(async () => {
-      const res = await revokeStaffSessionsAction(userId);
-      if (res?.error) {
-        showToast(`Revocation error: ${res.error}`);
-      } else {
-        showToast(`All active sessions revoked for ${userName}.`);
-      }
-    });
-  };
 
   return (
     <div className="space-y-6">
-      {toastMessage && (
-        <div className="fixed bottom-6 right-6 z-50 bg-ink text-white px-5 py-3 rounded-2xl shadow-xl text-xs font-semibold flex items-center gap-2 animate-in slide-in-from-bottom-3 duration-200">
-          <Sparkles className="w-4 h-4 text-emerald-400" />
-          <span>{toastMessage}</span>
+      {toast && (
+        <div
+          role="status"
+          className={`fixed bottom-6 right-6 z-50 px-5 py-3 rounded-2xl shadow-xl text-xs font-semibold flex items-center gap-2 animate-in slide-in-from-bottom-3 duration-200 ${
+            toast.ok ? "bg-ink text-white" : "bg-red-700 text-white"
+          }`}
+        >
+          {toast.ok ? <Sparkles className="w-4 h-4 text-emerald-400" /> : <AlertCircle className="w-4 h-4" />}
+          <span>{toast.text}</span>
         </div>
       )}
 
-      {/* Mandatory 2FA Staff Notice */}
       <div className="p-4 rounded-2xl bg-amber-50/60 border border-amber-200 flex items-start justify-between gap-3 text-xs text-amber-900">
         <div className="flex items-start gap-3">
           <KeyRound className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
           <p>
-            <strong className="font-bold">Mandatory Two-Step Sign-In:</strong> Staff accounts are required to use an authenticator app (TOTP) to access the Control Room. In the client portal this is optional.
+            <strong className="font-bold">Two-step sign-in:</strong> staff must use an authenticator app. New staff are prompted to set it
+            up after accepting their invite.
           </p>
         </div>
         <button
           type="button"
-          onClick={() => setInviteModalOpen(true)}
+          onClick={() => {
+            setInviteResult(null);
+            setInviteModalOpen(true);
+          }}
           className="px-4 py-2 rounded-full bg-[#1B2E24] hover:bg-black text-white font-semibold text-xs transition shadow-xs flex items-center gap-1.5 cursor-pointer shrink-0"
         >
           <UserPlus className="w-3.5 h-3.5" />
@@ -129,81 +166,159 @@ export function AdminUsersClient({ initialStaff }: { initialStaff: StaffUser[] }
           <table className="w-full text-left text-xs">
             <thead className="bg-surface/60 border-b border-rule/60 text-muted uppercase font-semibold">
               <tr>
-                <th className="py-3 px-6">Staff Member</th>
-                <th className="py-3 px-6">Email Address</th>
-                <th className="py-3 px-6">Assigned Role</th>
-                <th className="py-3 px-6">Two-Factor Auth</th>
-                <th className="py-3 px-6">Last Active</th>
-                <th className="py-3 px-6 text-right">Actions</th>
+                <th className="py-3 px-5">Staff Member</th>
+                <th className="py-3 px-5">Preset</th>
+                <th className="py-3 px-5">Status</th>
+                <th className="py-3 px-5">Two-step</th>
+                <th className="py-3 px-5">Invited</th>
+                <th className="py-3 px-5">Last sign-in</th>
+                <th className="py-3 px-5 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-rule/60">
-              {staffList.map((u) => (
-                <tr key={u.id} className="hover:bg-surface/40 transition-colors">
-                  <td className="py-4 px-6 font-bold text-ink">{u.name}</td>
-                  <td className="py-4 px-6 text-muted font-mono">{u.email}</td>
-                  <td className="py-4 px-6">
-                    <select
-                      value={u.staff_role || "SUPPORT"}
-                      onChange={(e) => handleChangeRole(u.id, e.target.value)}
-                      disabled={isPending}
-                      className={`px-2.5 py-1 rounded-full text-[11px] font-bold border outline-none cursor-pointer ${
-                        roleBadges[u.staff_role || "SUPPORT"]
-                      }`}
-                    >
-                      <option value="ADMIN">ADMIN</option>
-                      <option value="MANAGER">MANAGER</option>
-                      <option value="EDITOR">EDITOR</option>
-                      <option value="SUPPORT">SUPPORT</option>
-                    </select>
-                  </td>
-                  <td className="py-4 px-6">
-                    <span className="inline-flex items-center gap-1 font-semibold text-emerald-800">
-                      <Lock className="w-3.5 h-3.5 text-emerald-700" />
-                      Enforced (TOTP)
-                    </span>
-                  </td>
-                  <td className="py-4 px-6 text-muted font-mono text-[11px]">
-                    {u.last_login_at
-                      ? new Date(u.last_login_at).toLocaleString([], { dateStyle: "short", timeStyle: "short" })
-                      : "Never"}
-                  </td>
-                  <td className="py-4 px-6 text-right">
-                    <button
-                      type="button"
-                      onClick={() => handleRevokeSessions(u.id, u.name)}
-                      disabled={isPending}
-                      title="Bump token version to force logout across all devices"
-                      className="px-2.5 py-1 rounded-lg border border-rule text-[11px] font-semibold text-muted hover:text-red-700 hover:border-red-200 transition cursor-pointer"
-                    >
-                      Revoke Sessions
-                    </button>
-                  </td>
-                </tr>
-              ))}
+              {staffList.map((u) => {
+                const isMe = u.id === currentUserId;
+                const cd = cooldowns[u.id] || 0;
+                return (
+                  <tr key={u.id} className="hover:bg-surface/40 transition-colors align-top">
+                    <td className="py-4 px-5">
+                      <div className="font-bold text-ink">{u.name}</div>
+                      <div className="text-muted font-mono text-[11px]">{u.email}</div>
+                    </td>
+                    <td className="py-4 px-5">
+                      <select
+                        value={u.staff_role || "SUPPORT"}
+                        onChange={(e) => handleChangeRole(u.id, e.target.value)}
+                        disabled={isPending || isMe}
+                        aria-label={`Permission preset for ${u.name}`}
+                        className={`px-2.5 py-1 rounded-full text-[11px] font-bold border outline-none cursor-pointer ${roleBadges[u.staff_role || "SUPPORT"]}`}
+                      >
+                        <option value="ADMIN">ADMIN</option>
+                        <option value="MANAGER">MANAGER</option>
+                        <option value="FINANCE">FINANCE</option>
+                        <option value="EDITOR">EDITOR</option>
+                        <option value="SUPPORT">SUPPORT</option>
+                      </select>
+                    </td>
+                    <td className="py-4 px-5">
+                      <span className={`px-2.5 py-1 rounded-full text-[11px] font-bold border ${statusBadges[u.status]}`}>
+                        {ACCESS_STATUS_LABEL[u.status]}
+                      </span>
+                    </td>
+                    <td className="py-4 px-5">
+                      {u.totp_enabled ? (
+                        <span className="inline-flex items-center gap-1 font-semibold text-emerald-800">
+                          <Lock className="w-3.5 h-3.5" /> On
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 font-semibold text-amber-800">
+                          <Unlock className="w-3.5 h-3.5" /> Not set up
+                        </span>
+                      )}
+                    </td>
+                    <td className="py-4 px-5 text-muted text-[11px]">{fmt(u.invited_at)}</td>
+                    <td className="py-4 px-5 text-muted text-[11px]">{u.last_login_at ? fmt(u.last_login_at) : "Never"}</td>
+                    <td className="py-4 px-5">
+                      {!isMe && (
+                        <div className="flex flex-wrap justify-end gap-1.5">
+                          {u.status !== "DISABLED" && u.status !== "ACTIVE" && (
+                            <button
+                              type="button"
+                              disabled={isPending || cd > 0}
+                              onClick={() => run(() => resendAccessAction(u.id), "Email sent", u.id)}
+                              className="px-2.5 py-1 rounded-lg border border-rule text-[11px] font-semibold text-ink hover:bg-surface transition cursor-pointer disabled:opacity-50 inline-flex items-center gap-1"
+                            >
+                              <Mail className="w-3 h-3" /> {cd > 0 ? `Resend in ${cd}s` : "Resend"}
+                            </button>
+                          )}
+                          {u.status === "ACTIVE" && (
+                            <button
+                              type="button"
+                              disabled={isPending || cd > 0}
+                              onClick={() => run(() => resendAccessAction(u.id), "Sign-in link sent", u.id)}
+                              title="Email a one-time sign-in link"
+                              className="px-2.5 py-1 rounded-lg border border-rule text-[11px] font-semibold text-ink hover:bg-surface transition cursor-pointer disabled:opacity-50 inline-flex items-center gap-1"
+                            >
+                              <Mail className="w-3 h-3" /> {cd > 0 ? `${cd}s` : "Send link"}
+                            </button>
+                          )}
+                          {(u.status === "INVITED" || u.status === "EXPIRED" || u.status === "NOT_INVITED") && (
+                            <button
+                              type="button"
+                              disabled={isPending}
+                              onClick={() => {
+                                if (confirm(`Revoke ${u.name}'s invitation? Their link stops working.`))
+                                  run(() => revokeAccessAction(u.id), "Invitation revoked");
+                              }}
+                              className="px-2.5 py-1 rounded-lg border border-rule text-[11px] font-semibold text-muted hover:text-red-700 hover:border-red-200 transition cursor-pointer inline-flex items-center gap-1"
+                            >
+                              <Trash2 className="w-3 h-3" /> Revoke
+                            </button>
+                          )}
+                          {u.status === "DISABLED" ? (
+                            <button
+                              type="button"
+                              disabled={isPending}
+                              onClick={() => run(() => setAccountActiveAction(u.id, true), "Account enabled")}
+                              className="px-2.5 py-1 rounded-lg border border-rule text-[11px] font-semibold text-emerald-800 hover:bg-emerald-50 transition cursor-pointer"
+                            >
+                              Enable
+                            </button>
+                          ) : (
+                            u.status === "ACTIVE" && (
+                              <button
+                                type="button"
+                                disabled={isPending}
+                                onClick={() => {
+                                  if (confirm(`Disable ${u.name}? They are signed out and can't sign in until re-enabled.`))
+                                    run(() => setAccountActiveAction(u.id, false), "Account disabled");
+                                }}
+                                className="px-2.5 py-1 rounded-lg border border-rule text-[11px] font-semibold text-muted hover:text-red-700 hover:border-red-200 transition cursor-pointer inline-flex items-center gap-1"
+                              >
+                                <Ban className="w-3 h-3" /> Disable
+                              </button>
+                            )
+                          )}
+                          {isAdmin && u.totp_enabled && (
+                            <button
+                              type="button"
+                              disabled={isPending}
+                              onClick={() => {
+                                if (confirm(`Reset two-step sign-in for ${u.name}? They'll set up their authenticator again.`))
+                                  run(() => resetTwoStepAction(u.id), "Two-step reset");
+                              }}
+                              className="px-2.5 py-1 rounded-lg border border-rule text-[11px] font-semibold text-muted hover:text-amber-800 hover:border-amber-200 transition cursor-pointer inline-flex items-center gap-1"
+                            >
+                              <RotateCcw className="w-3 h-3" /> Reset two-step
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
       </div>
 
-      {/* Invite Modal */}
+      {/* Invite dialog */}
       {inviteModalOpen && (
-        <div className="fixed inset-0 z-50 bg-ink/50 backdrop-blur-xs flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 bg-ink/50 backdrop-blur-xs flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="invite-staff-title">
           <div className="bg-white rounded-3xl max-w-md w-full border border-rule shadow-2xl p-6 space-y-4 animate-in zoom-in-95 duration-150">
             <div className="flex items-center justify-between pb-3 border-b border-rule">
-              <h3 className="font-bold text-base text-ink">Provision Staff Access</h3>
-              <button
-                onClick={() => setInviteModalOpen(false)}
-                className="text-muted hover:text-ink text-sm font-semibold p-1"
-              >
+              <h3 id="invite-staff-title" className="font-bold text-base text-ink">Invite staff</h3>
+              <button onClick={() => setInviteModalOpen(false)} className="text-muted hover:text-ink text-sm font-semibold p-1" aria-label="Close">
                 &times;
               </button>
             </div>
 
             <form onSubmit={handleInvite} className="space-y-4 text-xs">
               <div>
-                <label className="block font-semibold text-ink mb-1">Full Name</label>
+                <label className="block font-semibold text-ink mb-1" htmlFor="invite-name">Full name</label>
                 <input
+                  id="invite-name"
                   type="text"
                   placeholder="e.g. Alex Kamau"
                   value={name}
@@ -212,32 +327,45 @@ export function AdminUsersClient({ initialStaff }: { initialStaff: StaffUser[] }
                   required
                 />
               </div>
-
               <div>
-                <label className="block font-semibold text-ink mb-1">Email Address</label>
+                <label className="block font-semibold text-ink mb-1" htmlFor="invite-email">Email address</label>
                 <input
+                  id="invite-email"
                   type="email"
-                  placeholder="alex.k@sirotech.com"
+                  placeholder="alex@sirotech.co.ke"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="w-full px-3.5 py-2.5 rounded-xl bg-surface border border-rule font-mono outline-none focus:ring-1 focus:ring-emerald-700"
                   required
                 />
               </div>
-
               <div>
-                <label className="block font-semibold text-ink mb-1">Assigned Role</label>
+                <label className="block font-semibold text-ink mb-1" htmlFor="invite-role">Permission preset</label>
                 <select
+                  id="invite-role"
                   value={role}
-                  onChange={(e) => setRole(e.target.value as any)}
+                  onChange={(e) => setRole(e.target.value as StaffRole)}
                   className="w-full px-3.5 py-2.5 rounded-xl bg-surface border border-rule font-medium outline-none"
                 >
                   <option value="ADMIN">ADMIN — Full platform control</option>
                   <option value="MANAGER">MANAGER — Leads, projects, billing &amp; reports</option>
+                  <option value="FINANCE">FINANCE — Invoices, payments &amp; reports</option>
                   <option value="EDITOR">EDITOR — Content, blog, media &amp; SEO</option>
                   <option value="SUPPORT">SUPPORT — Tickets &amp; communication</option>
                 </select>
               </div>
+
+              {inviteResult && (
+                <div
+                  role="status"
+                  className={`p-3 rounded-xl border text-xs flex items-start gap-2 ${
+                    inviteResult.ok ? "bg-emerald-50 border-emerald-200 text-emerald-900" : "bg-red-50 border-red-200 text-red-800"
+                  }`}
+                >
+                  {inviteResult.ok ? <Mail className="w-4 h-4 shrink-0" /> : <AlertCircle className="w-4 h-4 shrink-0" />}
+                  <span>{inviteResult.text}</span>
+                </div>
+              )}
 
               <div className="flex items-center justify-end gap-2 pt-2 border-t border-rule">
                 <button
@@ -245,14 +373,14 @@ export function AdminUsersClient({ initialStaff }: { initialStaff: StaffUser[] }
                   onClick={() => setInviteModalOpen(false)}
                   className="px-4 py-2 rounded-full border border-rule text-xs font-semibold text-body hover:bg-surface"
                 >
-                  Cancel
+                  Close
                 </button>
                 <button
                   type="submit"
                   disabled={isPending}
-                  className="px-5 py-2 rounded-full text-xs font-semibold text-white bg-emerald-800 hover:bg-emerald-700 transition shadow-xs"
+                  className="px-5 py-2 rounded-full text-xs font-semibold text-white bg-emerald-800 hover:bg-emerald-700 transition shadow-xs disabled:opacity-50"
                 >
-                  {isPending ? "Inviting..." : "Grant Access"}
+                  {isPending ? "Sending…" : "Send invite"}
                 </button>
               </div>
             </form>

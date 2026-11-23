@@ -13,7 +13,8 @@ import {
   toggleAdminTaskDoneAction,
   markLeadSpamAction,
   updateLeadLostReasonAction,
-  replyLeadEmailAction
+  replyLeadEmailAction,
+  retryLeadEmailsAction
 } from "@/app/admin/actions";
 import {
   Mail,
@@ -164,6 +165,9 @@ export function LeadDetailClient({ lead }: { lead: any }) {
           setEmailSentSuccess(false);
         }, 1500);
         router.refresh();
+      } else if (res.error) {
+        alert(res.error); // never fail silently
+        router.refresh();
       }
     });
   };
@@ -189,8 +193,39 @@ export function LeadDetailClient({ lead }: { lead: any }) {
 
   const utmData = lead.utm || {};
 
+  const emailFailed = lead.notify_status === "FAILED" || lead.autoreply_status === "FAILED";
+
   return (
     <div className="space-y-6">
+      {/* Enquiry email failure flag: the lead is safe; emails retry automatically via cron */}
+      {emailFailed && (
+        <div role="alert" className="p-4 rounded-2xl bg-red-50 border border-red-200 text-xs text-red-900 flex flex-wrap items-start justify-between gap-3">
+          <div className="space-y-1">
+            <div className="font-bold">An enquiry email did not send</div>
+            <div>
+              Team notification: <strong>{lead.notify_status || "PENDING"}</strong> · Auto-reply to visitor:{" "}
+              <strong>{lead.autoreply_status || "PENDING"}</strong> · Attempts: {lead.email_attempts || 0}
+              {lead.email_next_retry_at && <> · Next retry {new Date(lead.email_next_retry_at).toLocaleString()}</>}
+            </div>
+            {lead.email_last_error && <div className="font-mono text-[11px] text-red-800 break-all">{lead.email_last_error}</div>}
+          </div>
+          <button
+            type="button"
+            disabled={isPending}
+            onClick={() =>
+              startTransition(async () => {
+                const res = await retryLeadEmailsAction(lead.id);
+                if (res.error) alert(`Still failing: ${res.error}`);
+                router.refresh();
+              })
+            }
+            className="px-3 py-1.5 rounded-full bg-red-700 hover:bg-red-800 text-white font-semibold cursor-pointer disabled:opacity-50"
+          >
+            {isPending ? "Retrying…" : "Retry now"}
+          </button>
+        </div>
+      )}
+
       {/* Top Banner Actions */}
       <div className="flex flex-wrap items-center justify-between gap-3 p-4 rounded-2xl bg-white border border-rule/80 shadow-xs">
         <div className="flex items-center gap-2">

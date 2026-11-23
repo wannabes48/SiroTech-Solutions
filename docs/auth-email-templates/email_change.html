@@ -1,0 +1,8 @@
+<div style="font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:0 auto;color:#1B2E24">
+  <img src="https://sirotech.co.ke/email/logo.png" width="150" alt="SiroTech" style="margin:24px 0" />
+  <h2 style="margin:0 0 12px">Confirm your new email</h2>
+  <p style="color:#5f645c;line-height:1.6">Confirm that you want to sign in to SiroTech with <strong>{{ .NewEmail }}</strong> instead of {{ .Email }}.</p>
+  <p style="margin:28px 0"><a href="{{ .RedirectTo }}/auth/confirm?token_hash={{ .TokenHash }}&type=email_change&next=/account"
+     style="background:#0D9463;color:#ffffff;padding:14px 26px;border-radius:999px;text-decoration:none;display:inline-block;font-weight:600">Confirm new email</a></p>
+  <p style="color:#8d928a;font-size:13px;line-height:1.5">If you didn't ask for this, ignore this email and your sign-in email stays the same.</p>
+</div>

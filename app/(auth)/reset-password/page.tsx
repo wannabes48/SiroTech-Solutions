@@ -4,11 +4,13 @@ import React, { useState, Suspense } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Lock, Loader2, CheckCircle2, AlertCircle, ArrowRight, ShieldCheck } from "lucide-react";
+import { resetPasswordAction } from "../actions";
 
+// Reached from the recovery email via /auth/confirm, which signs the person in first.
 function ResetPasswordForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const email = searchParams.get("email") || "client@company.com";
+  const email = searchParams.get("email") || "your account";
 
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -32,7 +34,14 @@ function ResetPasswordForm() {
 
     setLoading(true);
     try {
-      await new Promise((r) => setTimeout(r, 800));
+      const fd = new FormData();
+      fd.set("password", password);
+      fd.set("confirm", confirmPassword);
+      const res = await resetPasswordAction(fd);
+      if (!res.ok) {
+        setError(res.error);
+        return;
+      }
       setSuccess(true);
     } catch (err: any) {
       setError("Failed to update password. Token may have expired.");
@@ -59,10 +68,10 @@ function ResetPasswordForm() {
           </p>
           <div className="mt-6">
             <Link
-              href="/sign-in"
+              href="/"
               className="w-full py-3 px-4 rounded-xl bg-[#1B2E24] hover:bg-black text-white font-semibold text-xs sm:text-sm flex items-center justify-center gap-2 transition-colors"
             >
-              <span>Sign In to Portal</span>
+              <span>Continue</span>
               <ArrowRight className="w-4 h-4" />
             </Link>
           </div>

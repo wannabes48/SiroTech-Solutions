@@ -1,22 +1,15 @@
 "use server";
 
-import { portalPath, portalUrl, adminPath, areaForHost, ADMIN_URL, PORTAL_URL } from "@/lib/hosts";
-import { verifyTotp } from "@/lib/totp";
+import { portalPath, portalUrl } from "@/lib/hosts";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { query, withTransaction } from "@/lib/db";
 import {
-  hashPassword,
-  verifyPassword,
-  createSession,
   clearSession,
   getSessionUser,
   requireUser,
   requireOrgScope,
-  checkLoginRateLimit,
-  recordFailedLogin,
-  resetLoginAttempts,
   logAudit,
 } from "@/lib/auth-server";
 import {
@@ -29,196 +22,7 @@ import {
 // 1. Authentication Actions
 // ==========================================
 
-export async function signInAction(formData: FormData) {
-  const email = (formData.get("email") as string)?.trim().toLowerCase();
-  const password = formData.get("password") as string;
-
-  if (!email || !password) {
-    return { error: "Please provide both email and password." };
-  }
-
-  const totp = ((formData.get("totp") as string) || "").trim();
-
-  const headerList = await headers();
-  const ip = headerList.get("x-forwarded-for")?.split(",")[0]?.trim() || "127.0.0.1";
-  // Each subdomain has its own login: admin.* for staff, portal.* for clients.
-  const area = areaForHost(headerList.get("host"));
-
-  // Rate Limiting: 5 attempts per 15 minutes per IP
-  const rateLimit = checkLoginRateLimit(ip);
-  if (!rateLimit.allowed) {
-    return {
-      error: `Too many failed login attempts. Please try again in ${rateLimit.retryAfterMinutes} minutes.`,
-    };
-  }
-
-  try {
-    const userRes = await query(
-      `SELECT 
-        u.id, u.name, u.email, u.password_hash, u.role, u.phone, u.timezone, u.welcome_completed,
-        u.totp_enabled, u.totp_secret,
-        m.org_id, m.role AS org_role, o.name AS org_name
-       FROM users u
-       LEFT JOIN memberships m ON m.user_id = u.id
-       LEFT JOIN organizations o ON o.id = m.org_id
-       WHERE LOWER(u.email) = $1
-       LIMIT 1`,
-      [email]
-    );
-
-    if (userRes.rowCount === 0 || !userRes.rows[0].password_hash) {
-      recordFailedLogin(ip);
-      return { error: "Invalid email or password." };
-    }
-
-    const row = userRes.rows[0];
-    const passwordMatch = verifyPassword(password, row.password_hash);
-    if (!passwordMatch) {
-      recordFailedLogin(ip);
-      return { error: "Invalid email or password." };
-    }
-
-    const isStaff = row.role === "STAFF" || row.role === "ADMIN";
-    if (area === "admin" && !isStaff) {
-      return { error: `This sign-in is for SiroTech staff. Clients sign in at ${PORTAL_URL}.` };
-    }
-    if (area !== "admin" && isStaff) {
-      return { error: `Staff accounts sign in at ${ADMIN_URL}.` };
-    }
-    if (isStaff && row.totp_enabled && row.totp_secret) {
-      if (!totp) {
-        return { error: "Enter the 6-digit code from your authenticator app." };
-      }
-      if (!verifyTotp(row.totp_secret, totp)) {
-        recordFailedLogin(ip);
-        return { error: "Invalid authenticator code." };
-      }
-    }
-
-    // Reset rate limiter on successful login
-    resetLoginAttempts(ip);
-
-    const sessionUser = {
-      id: row.id,
-      orgId: row.org_id || "e0f52cf9-0000-0000-0000-000000000001",
-      orgName: row.org_name || "CoastLane Logistics & Motors Ltd",
-      name: row.name,
-      email: row.email,
-      role: row.role,
-      orgRole: row.org_role || "OWNER",
-      phone: row.phone,
-      timezone: row.timezone,
-      welcomeCompleted: Boolean(row.welcome_completed),
-    };
-
-    await createSession(sessionUser);
-    await query("UPDATE users SET last_login_at = NOW() WHERE id = $1", [sessionUser.id]);
-    await logAudit(sessionUser.orgId, sessionUser.id, "AUTH_LOGIN", "USER", sessionUser.id, {
-      method: isStaff && row.totp_enabled ? "password+totp" : "password",
-    });
-
-    const isFirstClientLogin = row.role === "CLIENT" && !row.welcome_completed;
-    return {
-      success: true,
-      redirect: isStaff ? adminPath() : isFirstClientLogin ? portalPath("/welcome") : portalPath(),
-      role: row.role 
-    };
-  } catch (err: any) {
-    console.error("[signInAction Error]", err);
-    return { error: "An unexpected error occurred during authentication. Please try again." };
-  }
-}
-
-export async function signUpAction(formData: FormData) {
-  const name = (formData.get("name") as string)?.trim();
-  const email = (formData.get("email") as string)?.trim().toLowerCase();
-  const company = (formData.get("company") as string)?.trim();
-  const password = formData.get("password") as string;
-
-  if (!name || !email || !password) {
-    return { error: "Full name, email, and password are required." };
-  }
-
-  if (password.length < 8) {
-    return { error: "Password must be at least 8 characters long." };
-  }
-
-  try {
-    // Check existing email
-    const existing = await query("SELECT id FROM users WHERE LOWER(email) = $1", [email]);
-    if (existing.rowCount && existing.rowCount > 0) {
-      return { error: "An account with this email address already exists. Please sign in." };
-    }
-
-    const passwordHash = hashPassword(password);
-    const orgName = company || `${name}'s Organization`;
-
-    const result = await withTransaction(async (client) => {
-      // 1. Create Organization
-      const orgRes = await client.query(
-        `INSERT INTO organizations (name, billing_email, tax_pin, address, country, currency)
-         VALUES ($1, $2, 'PENDING-PIN', 'Nairobi, Kenya', 'Kenya', 'KES')
-         RETURNING id, name`,
-        [orgName, email]
-      );
-      const newOrgId = orgRes.rows[0].id;
-
-      // 2. Create User
-      const userRes = await client.query(
-        `INSERT INTO users (name, email, password_hash, role, timezone)
-         VALUES ($1, $2, $3, 'CLIENT', 'Africa/Nairobi')
-         RETURNING id, name, email, role`,
-        [name, email, passwordHash]
-      );
-      const newUserId = userRes.rows[0].id;
-
-      // 3. Create Membership as OWNER
-      await client.query(
-        `INSERT INTO memberships (org_id, user_id, role)
-         VALUES ($1, $2, 'OWNER')`,
-        [newOrgId, newUserId]
-      );
-
-      // 4. Create Notification Preferences
-      await client.query(
-        `INSERT INTO notification_preferences (user_id, email_messages, email_updates, email_invoices, email_tickets)
-         VALUES ($1, true, true, true, true)`,
-        [newUserId]
-      );
-
-      // 5. Welcome notification
-      await client.query(
-        `INSERT INTO notifications (org_id, user_id, type, title, description, target_href)
-         VALUES ($1, $2, 'UPDATE', 'Welcome to SiroTech Client Portal', 'Your dedicated engineering workspace has been provisioned.', '/portal')`,
-        [newOrgId, newUserId]
-      );
-
-      return {
-        id: newUserId,
-        orgId: newOrgId,
-        orgName: orgRes.rows[0].name,
-        name: userRes.rows[0].name,
-        email: userRes.rows[0].email,
-        role: userRes.rows[0].role as "CLIENT",
-        orgRole: "OWNER" as const,
-      };
-    });
-
-    await createSession({
-      ...result,
-      welcomeCompleted: false,
-    });
-    await logAudit(result.orgId, result.id, "AUTH_REGISTER", "USER", result.id, {
-      company: orgName,
-    });
-
-    return { success: true, redirect: portalPath("/welcome") };
-  } catch (err: any) {
-    console.error("[signUpAction Error]", err);
-    return { error: "Failed to create account. Please try again." };
-  }
-}
-
+// Sign-in, sign-up, links and codes live in app/(auth)/actions.ts (Supabase Auth).
 export async function signOutAction() {
   const user = await getSessionUser();
   if (user) {
@@ -866,22 +670,31 @@ export async function updateProfileAction(formData: FormData) {
       }
     }
 
+    // Email is the sign-in identity: Supabase confirms the new address first, and the
+    // profile email is updated when the person completes that confirmation (completeSignIn).
+    let emailChangePending = false;
+    if (email !== user.email.toLowerCase()) {
+      const { supabaseServer } = await import("@/lib/supabase/server");
+      const supabase = await supabaseServer();
+      const { error: emailErr } = await supabase.auth.updateUser({ email }, { emailRedirectTo: portalUrl() });
+      if (emailErr) return { error: emailErr.message };
+      emailChangePending = true;
+    }
+
     await query(
       `UPDATE users 
-       SET name = $1, email = $2, phone = $3, timezone = $4, updated_at = NOW() 
-       WHERE id = $5`,
-      [name, email, phone, timezone, user.id]
+       SET name = $1, phone = $2, timezone = $3, updated_at = NOW() 
+       WHERE id = $4`,
+      [name, phone, timezone, user.id]
     );
 
     // Synchronize active session cookie so TopBar and layouts reflect changes immediately
     const updatedUser = {
       ...user,
       name,
-      email,
       phone,
       timezone,
     };
-    await createSession(updatedUser);
 
     await logAudit(user.orgId, user.id, "USER_PROFILE_UPDATED", "USER", user.id, {
       name,
@@ -892,7 +705,11 @@ export async function updateProfileAction(formData: FormData) {
 
     revalidatePath("/portal");
     revalidatePath("/portal/account");
-    return { success: true, user: updatedUser };
+    return {
+      success: true,
+      user: updatedUser,
+      ...(emailChangePending ? { message: `Check ${email} and confirm the change. Your sign-in email stays the same until then.` } : {}),
+    };
   } catch (err: any) {
     console.error("[updateProfileAction Error]", err);
     return { error: err.message || "Failed to update profile settings." };
@@ -905,46 +722,36 @@ export async function updatePasswordAction(formData: FormData) {
   const newPassword = formData.get("newPassword") as string;
   const confirmPassword = formData.get("confirmPassword") as string;
 
-  if (!currentPassword || !newPassword || !confirmPassword) {
-    return { error: "All password fields are required." };
+  if (!newPassword || !confirmPassword) {
+    return { error: "Please enter and confirm your new password." };
   }
-
-  if (currentPassword === newPassword) {
+  if (currentPassword && currentPassword === newPassword) {
     return { error: "New password cannot be the same as your current password." };
   }
-
   if (newPassword !== confirmPassword) {
     return { error: "New password and confirmation do not match." };
   }
-
   if (newPassword.length < 8) {
     return { error: "New password must be at least 8 characters long." };
   }
-
   if (!/[A-Za-z]/.test(newPassword) || !/[0-9]/.test(newPassword)) {
     return { error: "New password must contain both letters and numbers." };
   }
 
   try {
-    const res = await query("SELECT password_hash FROM users WHERE id = $1", [user.id]);
-    if (res.rowCount === 0 || !res.rows[0].password_hash) {
-      return { error: "User account not found." };
+    // Re-check the current password when one is given (accounts created by invite/link may have none yet).
+    if (currentPassword) {
+      const { supabaseAnon } = await import("@/lib/supabase/admin");
+      const { error: checkErr } = await supabaseAnon.auth.signInWithPassword({ email: user.email, password: currentPassword });
+      if (checkErr) return { error: "Current password is incorrect." };
     }
-
-    const currentHash = res.rows[0].password_hash;
-    const isValid = verifyPassword(currentPassword, currentHash);
-    if (!isValid) {
-      return { error: "Current password is incorrect." };
-    }
-
-    const newHash = hashPassword(newPassword);
-    await query("UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2", [
-      newHash,
-      user.id,
-    ]);
+    const { supabaseServer } = await import("@/lib/supabase/server");
+    const supabase = await supabaseServer();
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    if (error) return { error: error.message };
+    await query("UPDATE users SET password_hash = NULL, updated_at = NOW() WHERE id = $1", [user.id]);
 
     await logAudit(user.orgId, user.id, "AUTH_PASSWORD_CHANGED", "USER", user.id);
-
     return { success: true };
   } catch (err: any) {
     console.error("[updatePasswordAction Error]", err);
@@ -1048,7 +855,6 @@ export async function completePortalWelcomeAction(params: {
         ...user,
         welcomeCompleted: true,
       };
-      await createSession(updatedUser);
 
       await logAudit(user.orgId, user.id, "PORTAL_WELCOME_SKIPPED", "USER", user.id, {
         skippedAt: new Date().toISOString(),
@@ -1098,7 +904,6 @@ export async function completePortalWelcomeAction(params: {
       timezone,
       welcomeCompleted: true,
     };
-    await createSession(updatedUser);
 
     await logAudit(user.orgId, user.id, "PORTAL_WELCOME_COMPLETED", "USER", user.id, {
       name,
@@ -1125,64 +930,61 @@ export async function inviteTeamMemberAction(formData: FormData) {
   }
 
   const email = (formData.get("email") as string)?.trim().toLowerCase();
+  const name = (formData.get("name") as string)?.trim() || email?.split("@")[0].replace(/[._-]+/g, " ");
   const title = (formData.get("title") as string)?.trim() || "Operations Specialist";
-  const role = (formData.get("role") as string) || "MEMBER";
+  const role = (formData.get("role") as string) === "OWNER" ? "OWNER" : "MEMBER";
 
-  if (!email || !email.includes("@")) {
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     return { error: "A valid colleague email address is required." };
   }
 
   try {
-    // Check if user is already an active member of this organization
-    const memberCheck = await query(
-      `SELECT m.id FROM memberships m
-       JOIN users u ON u.id = m.user_id
-       WHERE m.org_id = $1 AND LOWER(u.email) = $2`,
-      [user.orgId, email]
+    const existing = await query<{ id: string; role: string; in_org: boolean }>(
+      `SELECT u.id, u.role, EXISTS (SELECT 1 FROM memberships m WHERE m.user_id = u.id AND m.org_id = $2) AS in_org
+       FROM users u WHERE LOWER(u.email) = $1`,
+      [email, user.orgId]
+    );
+    const row = existing.rows[0];
+    if (row?.in_org) return { error: "This person is already a member of this organization." };
+    if (row && row.role !== "CLIENT") return { error: "This email belongs to a SiroTech staff account and can't be invited." };
+
+    // 1. Profile first (role CLIENT + membership), then the access email.
+    const profileId =
+      row?.id ||
+      (
+        await query<{ id: string }>(
+          `INSERT INTO users (name, email, role, active, invited_by_id) VALUES ($1, $2, 'CLIENT', true, $3) RETURNING id`,
+          [name, email, user.id]
+        )
+      ).rows[0].id;
+    await query(
+      `INSERT INTO memberships (org_id, user_id, role) VALUES ($1, $2, $3) ON CONFLICT (org_id, user_id) DO NOTHING`,
+      [user.orgId, profileId, role]
     );
 
-    if (memberCheck.rowCount && memberCheck.rowCount > 0) {
-      return { error: "This user is already an active member of this organization." };
-    }
-
-    // Check if an unexpired invite already exists
-    const inviteCheck = await query(
-      `SELECT id FROM invites WHERE org_id = $1 AND LOWER(email) = $2 AND accepted_at IS NULL AND expires_at > NOW()`,
-      [user.orgId, email]
-    );
-
-    if (inviteCheck.rowCount && inviteCheck.rowCount > 0) {
-      return { error: "An active invitation has already been dispatched to this email." };
-    }
-
-    const token = `inv_${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
-
-    const invRes = await query(
-      `INSERT INTO invites (org_id, email, role, token, expires_at)
-       VALUES ($1, $2, $3, $4, NOW() + INTERVAL '7 days')
-       RETURNING id, email, role, created_at`,
-      [user.orgId, email, role, token]
-    );
-
-    await logAudit(user.orgId, user.id, "TEAM_MEMBER_INVITED", "INVITE", invRes.rows[0].id, {
+    const { sendAccessEmail } = await import("@/lib/access-email");
+    const sent = await sendAccessEmail({ email, area: "portal", name, invitedById: user.id });
+    await logAudit(user.orgId, user.id, "TEAM_MEMBER_INVITED", "USER", profileId, {
       email,
       role,
       title,
+      result: sent.ok ? sent.kind : sent.error,
     });
-
     revalidatePath("/portal/account");
-    return {
-      success: true,
-      invite: {
-        id: invRes.rows[0].id,
-        email: invRes.rows[0].email,
-        name: email.split("@")[0].replace(".", " "),
-        role: invRes.rows[0].role,
-        title,
-        status: "INVITED",
-        joinedAt: "Pending acceptance",
-      },
+
+    const invite = {
+      id: profileId,
+      email,
+      name,
+      role,
+      title,
+      status: "INVITED",
+      joinedAt: "Pending acceptance",
     };
+    if (!sent.ok) {
+      return { invite, error: `Member added, but the email was not sent: ${sent.error}` };
+    }
+    return { success: true, invite, message: sent.kind === "invite" ? "Invite sent" : "Sign-in link sent" };
   } catch (err: any) {
     console.error("[inviteTeamMemberAction Error]", err);
     return { error: err.message || "Failed to dispatch invitation." };
@@ -1196,38 +998,31 @@ export async function revokeTeamMemberAction(id: string) {
   if (user.orgRole !== "OWNER") {
     return { error: "Only organization Owners have permission to remove members or revoke invites." };
   }
+  if (id === user.id) {
+    return { error: "You cannot remove yourself from the organization workspace." };
+  }
 
   try {
-    // 1. Try deleting from invites first
-    const invRes = await query(
-      `DELETE FROM invites WHERE id = $1 AND org_id = $2 RETURNING id, email`,
-      [id, user.orgId]
-    );
-
+    // Legacy pending invite rows (pre-Supabase)
+    const invRes = await query(`DELETE FROM invites WHERE id = $1 AND org_id = $2 RETURNING id, email`, [id, user.orgId]);
     if (invRes.rowCount && invRes.rowCount > 0) {
       await logAudit(user.orgId, user.id, "INVITE_REVOKED", "INVITE", id, { email: invRes.rows[0].email });
       revalidatePath("/portal/account");
       return { success: true };
     }
 
-    // 2. Cannot remove self
-    if (id === user.id) {
-      return { error: "You cannot remove yourself from the organization workspace." };
+    const memRes = await query(`DELETE FROM memberships WHERE user_id = $1 AND org_id = $2 RETURNING id`, [id, user.orgId]);
+    if (!memRes.rowCount) return { error: "Member or invite not found in this organization." };
+
+    // No other organisation left: revoke their access entirely (deletes never-used invites).
+    const others = await query("SELECT 1 FROM memberships WHERE user_id = $1 LIMIT 1", [id]);
+    if (others.rowCount === 0) {
+      const { revokeAccess } = await import("@/lib/access-email");
+      await revokeAccess(id, user.id);
     }
-
-    // 3. Remove membership
-    const memRes = await query(
-      `DELETE FROM memberships WHERE user_id = $1 AND org_id = $2 RETURNING id`,
-      [id, user.orgId]
-    );
-
-    if (memRes.rowCount && memRes.rowCount > 0) {
-      await logAudit(user.orgId, user.id, "MEMBERSHIP_REMOVED", "MEMBERSHIP", memRes.rows[0].id, { userId: id });
-      revalidatePath("/portal/account");
-      return { success: true };
-    }
-
-    return { error: "Member or invite not found in this organization." };
+    await logAudit(user.orgId, user.id, "MEMBERSHIP_REMOVED", "MEMBERSHIP", memRes.rows[0].id, { userId: id });
+    revalidatePath("/portal/account");
+    return { success: true };
   } catch (err: any) {
     console.error("[revokeTeamMemberAction Error]", err);
     return { error: err.message || "Failed to remove team member." };
@@ -1243,20 +1038,19 @@ export async function resendInviteAction(email: string) {
   }
 
   try {
-    const res = await query(
-      `UPDATE invites 
-       SET expires_at = NOW() + INTERVAL '7 days'
-       WHERE org_id = $1 AND LOWER(email) = $2 AND accepted_at IS NULL
-       RETURNING id`,
+    const target = await query<{ id: string }>(
+      `SELECT u.id FROM users u JOIN memberships m ON m.user_id = u.id
+       WHERE m.org_id = $1 AND LOWER(u.email) = $2 AND u.role = 'CLIENT'`,
       [user.orgId, email.toLowerCase()]
     );
+    if (!target.rows[0]) return { error: "No member with this email in your organization." };
 
-    if (res.rowCount === 0) {
-      return { error: "No pending invite found for this email address." };
-    }
+    const { sendAccessEmail } = await import("@/lib/access-email");
+    const sent = await sendAccessEmail({ email, area: "portal", invitedById: user.id });
+    if (!sent.ok) return { error: sent.error, retryAfterSeconds: sent.retryAfterSeconds };
 
-    await logAudit(user.orgId, user.id, "INVITE_RESENT", "INVITE", res.rows[0].id, { email });
-    return { success: true };
+    await logAudit(user.orgId, user.id, "INVITE_RESENT", "USER", target.rows[0].id, { email, kind: sent.kind });
+    return { success: true, message: sent.kind === "invite" ? "Invite sent" : "Sign-in link sent" };
   } catch (err: any) {
     console.error("[resendInviteAction Error]", err);
     return { error: err.message || "Failed to resend invite." };

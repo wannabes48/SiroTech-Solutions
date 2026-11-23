@@ -48,16 +48,29 @@ interface EmailLog {
   created_at: string;
 }
 
+interface AuthEmailLog {
+  id: string;
+  type: string;
+  email: string;
+  area: string | null;
+  status: string;
+  error: string | null;
+  created_at: string;
+}
+
 export function AdminEmailClient({
   initialTemplates,
   initialLogs,
+  initialAuthLogs = [],
   currentUserEmail
 }: {
   initialTemplates: EmailTemplate[];
   initialLogs: EmailLog[];
+  initialAuthLogs?: AuthEmailLog[];
   currentUserEmail?: string;
 }) {
-  const [activeMainTab, setActiveMainTab] = useState<"TEMPLATES" | "LOGS">("TEMPLATES");
+  const [activeMainTab, setActiveMainTab] = useState<"TEMPLATES" | "LOGS" | "ACCESS">("TEMPLATES");
+  const authFailures = initialAuthLogs.filter((l) => l.status === "FAILED").length;
   const [templates, setTemplates] = useState<EmailTemplate[]>(initialTemplates);
   const [selectedTemplateKey, setSelectedTemplateKey] = useState<string>(initialTemplates[0]?.key || "verify");
   const [categoryFilter, setCategoryFilter] = useState<string>("ALL");
@@ -334,6 +347,21 @@ export function AdminEmailClient({
           >
             <Send className="w-4 h-4 text-emerald-600" />
             <span>Delivery Logs ({logs.length})</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveMainTab("ACCESS")}
+            className={`px-4 py-2 rounded-full text-xs font-bold transition-all cursor-pointer flex items-center gap-2 ${
+              activeMainTab === "ACCESS"
+                ? "bg-[#1B2E24] text-white shadow-xs"
+                : "bg-white border border-rule text-muted hover:text-ink"
+            }`}
+          >
+            <span>Invites &amp; Sign-in Links</span>
+            {authFailures > 0 && (
+              <span className="px-1.5 py-0.5 rounded-full bg-rose-600 text-white text-[10px]">{authFailures} failed</span>
+            )}
           </button>
         </div>
 
@@ -732,7 +760,7 @@ export function AdminEmailClient({
               />
 
               <div className="flex items-center gap-1.5 text-xs">
-                {["ALL", "DELIVERED", "FAILED"].map(status => (
+                {["ALL", "SENT", "DELIVERED", "BOUNCED", "FAILED"].map(status => (
                   <button
                     key={status}
                     type="button"
@@ -786,8 +814,10 @@ export function AdminEmailClient({
                       </td>
                       <td className="py-3 px-4">
                         <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                          log.status === "DELIVERED"
+                          log.status === "DELIVERED" || log.status === "SENT"
                             ? "bg-emerald-100 text-emerald-900 border border-emerald-200"
+                            : log.status === "SIMULATED" || log.status === "DELAYED"
+                            ? "bg-surface text-muted border border-rule"
                             : "bg-rose-100 text-rose-900 border border-rose-200"
                         }`}>
                           {log.status}
@@ -812,6 +842,65 @@ export function AdminEmailClient({
                     <td colSpan={7} className="py-8 text-center text-muted">
                       No delivery logs match your filter criteria.
                     </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* ===================================================================== */}
+      {/* VIEW 3: INVITES & SIGN-IN LINKS (Supabase Auth email requests)        */}
+      {/* ===================================================================== */}
+      {activeMainTab === "ACCESS" && (
+        <div className="bg-white rounded-3xl border border-rule/80 p-6 shadow-xs space-y-4">
+          <div>
+            <h2 className="text-base font-bold text-ink">Invites, sign-in links &amp; password resets</h2>
+            <p className="text-xs text-muted">
+              Every request made to Supabase Auth and its outcome. Supabase sends these emails (through your Resend SMTP);
+              delivery and bounces for them appear in Resend.
+            </p>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead>
+                <tr className="border-b border-rule/80 text-[10px] font-bold text-muted uppercase tracking-wider">
+                  <th className="py-3 px-4">Time</th>
+                  <th className="py-3 px-4">Type</th>
+                  <th className="py-3 px-4">Email</th>
+                  <th className="py-3 px-4">Host</th>
+                  <th className="py-3 px-4">Status</th>
+                  <th className="py-3 px-4">Error</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-rule/60">
+                {initialAuthLogs.length > 0 ? (
+                  initialAuthLogs.map((l) => (
+                    <tr key={l.id} className="hover:bg-surface/50">
+                      <td className="py-3 px-4 whitespace-nowrap text-muted font-mono text-[11px]">
+                        {new Date(l.created_at).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                      </td>
+                      <td className="py-3 px-4 font-mono">{l.type}</td>
+                      <td className="py-3 px-4 font-mono text-ink">{l.email}</td>
+                      <td className="py-3 px-4 text-muted">{l.area || "—"}</td>
+                      <td className="py-3 px-4">
+                        <span
+                          className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                            l.status === "FAILED"
+                              ? "bg-rose-100 text-rose-900 border border-rose-200"
+                              : "bg-emerald-100 text-emerald-900 border border-emerald-200"
+                          }`}
+                        >
+                          {l.status}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 text-rose-800 max-w-[320px] break-words">{l.error || "—"}</td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={6} className="py-10 text-center text-muted">No invite or sign-in link requests yet.</td>
                   </tr>
                 )}
               </tbody>

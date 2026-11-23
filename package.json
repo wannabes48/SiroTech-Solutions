@@ -17,6 +17,7 @@
     "@hookform/resolvers": "^5.9.1",
     "@radix-ui/react-accordion": "^1.2.21",
     "@radix-ui/react-slot": "^1.4.0",
+    "@supabase/ssr": "^0.12.7",
     "@supabase/supabase-js": "^2.117.3",
     "@tailwindcss/postcss": "^4.3.3",
     "@types/jszip": "^3.4.0",

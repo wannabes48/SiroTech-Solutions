@@ -10,6 +10,7 @@ export default async function AdminEmailPage() {
 
   let dbTemplates: any[] = [];
   let logs: any[] = [];
+  let authLogs: any[] = [];
 
   try {
     const [tRes, lRes] = await Promise.all([
@@ -20,6 +21,12 @@ export default async function AdminEmailPage() {
     logs = lRes.rows;
   } catch (err) {
     console.error("Error loading email data:", err);
+  }
+  try {
+    const aRes = await query("SELECT id, type, email, area, status, error, created_at FROM auth_email_logs ORDER BY created_at DESC LIMIT 100");
+    authLogs = aRes.rows;
+  } catch (err) {
+    console.error("Error loading auth email logs (run scripts/migrate-supabase-auth.js):", err);
   }
 
   const definitions = getAllTemplateDefinitions();
@@ -53,6 +60,7 @@ export default async function AdminEmailPage() {
       <AdminEmailClient
         initialTemplates={JSON.parse(JSON.stringify(templates))}
         initialLogs={JSON.parse(JSON.stringify(logs))}
+        initialAuthLogs={JSON.parse(JSON.stringify(authLogs))}
         currentUserEmail={staff.email}
       />
     </div>

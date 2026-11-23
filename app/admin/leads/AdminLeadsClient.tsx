@@ -265,6 +265,14 @@ export function AdminLeadsClient({
                       </td>
                       <td className="py-4 px-6">
                         <AdminStatusPill status={lead.status} />
+                        {(lead.notify_status === "FAILED" || lead.autoreply_status === "FAILED") && (
+                          <div
+                            className="mt-1 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-50 text-red-800 border border-red-200"
+                            title={lead.email_last_error || "An enquiry email failed; it retries automatically."}
+                          >
+                            Email failed
+                          </div>
+                        )}
                       </td>
                       <td className="py-4 px-6 text-right">
                         <div className="flex items-center justify-end gap-2">

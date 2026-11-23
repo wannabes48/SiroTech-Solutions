@@ -4,6 +4,7 @@ import { requireUser } from "@/lib/auth-server";
 import { query } from "@/lib/db";
 import { getPortalNotificationPreferences, getPortalOrganization } from "@/lib/portal-db";
 import { PortalWelcomeClient } from "./PortalWelcomeClient";
+import { SetPasswordCard } from "@/components/auth/SetPasswordCard";
 
 export const metadata: Metadata = {
   title: "Welcome to SiroTech Client Portal",
@@ -41,7 +42,16 @@ export default async function PortalWelcomePage() {
     welcome_completed: false,
   };
 
+  const pw = await query<{ has_legacy: boolean }>("SELECT password_hash IS NOT NULL AS has_legacy FROM users WHERE id = $1", [user.id]);
+  const showPassword = !pw.rows[0]?.has_legacy;
+
   return (
+    <>
+    {showPassword && (
+      <div className="max-w-3xl mx-auto px-4 pt-6">
+        <SetPasswordCard />
+      </div>
+    )}
     <PortalWelcomeClient
       user={{
         id: profile.id,
@@ -57,5 +67,6 @@ export default async function PortalWelcomePage() {
       }}
       initialPrefs={notifPrefs}
     />
+    </>
   );
 }

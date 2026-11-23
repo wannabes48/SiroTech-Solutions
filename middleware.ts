@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { createServerClient } from "@supabase/ssr";
 import { areaForHost, PORTAL_URL, ADMIN_URL } from "@/lib/hosts";
-import { SESSION_COOKIE, verifySessionCookie } from "@/lib/session-cookie";
+import { SUPABASE_ANON_KEY, SUPABASE_COOKIE_OPTIONS, SUPABASE_URL } from "@/lib/supabase/cookies";
 
 /**
  * Host routing:
@@ -10,9 +11,15 @@ import { SESSION_COOKIE, verifySessionCookie } from "@/lib/session-cookie";
  *   admin.sirotech.co.ke   → rewritten into app/admin/**  (staff only)
  * Auth pages (app/(auth)) are shared and stay at the root on both subdomains.
  * /api/* is not matched, so it is served identically on every host.
+ *
+ * Sessions are Supabase Auth cookies (host-only, so each subdomain has its own
+ * login). This middleware refreshes them and routes by the server-set
+ * app_metadata.role; pages/actions re-check the profile in the database.
  */
 
-const AUTH_PATHS = ["/sign-in", "/sign-up", "/forgot-password", "/reset-password", "/verify-email", "/invite"];
+const AUTH_PATHS = ["/sign-in", "/sign-up", "/forgot-password", "/reset-password", "/verify-email", "/invite", "/auth", "/two-step"];
+/** Signed-in users are sent home from these (the rest must work with a session). */
+const SIGNED_OUT_ONLY = ["/sign-in", "/sign-up", "/forgot-password", "/verify-email"];
 /** Client-only auth pages; the admin host has no sign-up. */
 const PORTAL_ONLY_AUTH_PATHS = ["/sign-up", "/verify-email"];
 
@@ -33,7 +40,7 @@ const CSP_REPORT_ONLY = `
   frame-ancestors 'none';
 `.replace(/\s{2,}/g, " ").trim();
 
-function secure(res: NextResponse): NextResponse {
+function secure(res: NextResponse, pathname: string): NextResponse {
   // Security Headers (J8 Security Checklist & Production Configuration)
   res.headers.set("X-Content-Type-Options", "nosniff");
   res.headers.set("X-Frame-Options", "DENY");
@@ -42,6 +49,11 @@ function secure(res: NextResponse): NextResponse {
   res.headers.set("Content-Security-Policy-Report-Only", CSP_REPORT_ONLY);
   // Subdomains are never indexed
   res.headers.set("X-Robots-Tag", "noindex, nofollow");
+  if (under(pathname, "/auth/confirm")) {
+    // The one-time token is in the URL: never cache it or leak it via Referer.
+    res.headers.set("Cache-Control", "no-store, max-age=0");
+    res.headers.set("Referrer-Policy", "no-referrer");
+  }
   return res;
 }
 
@@ -65,22 +77,47 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(new URL("/sign-in", req.url));
   }
 
-  // 3. Auth gates (signature + expiry verified; host-only cookie, so each subdomain has its own session)
-  const user = await verifySessionCookie(req.cookies.get(SESSION_COOKIE)?.value);
+  // 3. Refresh the Supabase session; refreshed cookies are copied onto whatever we return.
+  const cookieJar = NextResponse.next({ request: req });
+  const supabase = createServerClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    cookieOptions: SUPABASE_COOKIE_OPTIONS,
+    cookies: {
+      getAll: () => req.cookies.getAll(),
+      setAll: (list) => {
+        list.forEach(({ name, value }) => req.cookies.set(name, value));
+        list.forEach(({ name, value, options }) => cookieJar.cookies.set(name, value, options));
+      },
+    },
+  });
+  const { data } = await supabase.auth.getClaims();
+  const claims = data?.claims as Record<string, any> | undefined;
+  const signedIn = Boolean(claims?.sub);
+  const role: string | undefined = claims?.app_metadata?.role;
+
+  const withCookies = (res: NextResponse) => {
+    cookieJar.cookies.getAll().forEach((c) => res.cookies.set(c));
+    return res;
+  };
+  const go = (url: string | URL) => withCookies(NextResponse.redirect(url));
+
+  // 4. Auth gates (the profile's role/active status is re-checked server-side)
   const authPath = isAuthPath(pathname);
-
-  if (!user && !authPath) {
-    return NextResponse.redirect(new URL(`/sign-in?next=${encodeURIComponent(pathname + search)}`, req.url));
+  if (!signedIn && !authPath) {
+    return go(new URL(`/sign-in?next=${encodeURIComponent(pathname + search)}`, req.url));
   }
-  if (user && area === "admin" && user.role === "CLIENT") return NextResponse.redirect(PORTAL_URL);
-  if (user && area === "portal" && user.role !== "CLIENT") return NextResponse.redirect(ADMIN_URL);
-  if (user && authPath) return NextResponse.redirect(new URL("/", req.url));
+  if (signedIn && role === "CLIENT" && area === "admin") return go(PORTAL_URL);
+  if (signedIn && role && role !== "CLIENT" && area === "portal") return go(ADMIN_URL);
+  // Only bounce provisioned sessions (role set) and never when showing an auth error,
+  // so a session without a usable profile can't loop between /sign-in and /.
+  if (signedIn && role && !req.nextUrl.searchParams.has("error") && SIGNED_OUT_ONLY.some((a) => under(pathname, a))) {
+    return go(new URL("/", req.url));
+  }
 
-  // 4. Rewrite into the area's folder (auth pages are shared and stay at the root)
+  // 5. Rewrite into the area's folder (auth pages are shared and stay at the root)
   const res = authPath
-    ? NextResponse.next()
-    : NextResponse.rewrite(new URL(`/${area}${pathname === "/" ? "" : pathname}${search}`, req.url));
-  return secure(res);
+    ? cookieJar
+    : withCookies(NextResponse.rewrite(new URL(`/${area}${pathname === "/" ? "" : pathname}${search}`, req.url), { request: req }));
+  return secure(res, pathname);
 }
 
 export const config = {

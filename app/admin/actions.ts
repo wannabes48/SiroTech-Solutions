@@ -7,7 +7,9 @@ import { query } from "@/lib/db";
 import { requireStaffUser, logAdminAudit } from "@/lib/admin-permissions";
 import { cookies } from "next/headers";
 import { notifyClientUsers, notifyUser } from "@/lib/notifications";
-import { hashPassword, verifyPassword } from "@/lib/auth-server";
+import { sendAccessEmail, revokeAccess, setAccountActive, resetTwoStep } from "@/lib/access-email";
+import { supabaseAnon } from "@/lib/supabase/admin";
+import { supabaseServer } from "@/lib/supabase/server";
 import { getTemplateDefinition, sendEmailWithLog } from "@/lib/email-templates/renderer";
 import { validateTemplateVariables } from "@/lib/email-templates/interpolator";
 import { getGoogleAnalyticsReport, clearAnalyticsCache, GoogleAnalyticsReportData } from "@/lib/analytics/google-analytics";
@@ -159,40 +161,8 @@ export async function convertLeadToClientAction(leadId: string) {
     [newOrgId, leadId]
   );
 
-  // Generate portal invitation token and dispatch invite email to allow client login
-  const inviteToken = crypto.randomBytes(32).toString("hex");
-  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-
-  // Clear any existing invite for this email
-  await query("DELETE FROM invites WHERE email = $1", [lead.email]);
-
-  await query(
-    `INSERT INTO invites (org_id, email, role, token, expires_at)
-     VALUES ($1, $2, 'OWNER', $3, $4)`,
-    [newOrgId, lead.email, inviteToken, expiresAt]
-  );
-
-  // Client invites are accepted on the portal host.
-  const inviteUrl = portalUrl(`/invite/${inviteToken}`);
-
-  try {
-    await sendEmailWithLog({
-      templateKey: "invite",
-      to: lead.email,
-      data: {
-        name: lead.name,
-        email: lead.email,
-        invite_url: inviteUrl,
-        org_name: orgName,
-        inviter_name: staff.name,
-        role: "Organization Owner",
-        expires_in: "7 days",
-      },
-      metadata: { leadId, orgId: newOrgId, inviteToken }
-    });
-  } catch (emailErr) {
-    console.error("[ConvertLead] Failed to dispatch portal invitation email:", emailErr);
-  }
+  // Profile (users row + OWNER membership) exists above; now the invite or sign-in link.
+  const access = await sendAccessEmail({ email: lead.email, area: "portal", name: lead.name, invitedById: staff.id });
 
   await logAdminAudit({
     orgId: newOrgId,
@@ -201,13 +171,19 @@ export async function convertLeadToClientAction(leadId: string) {
     action: "LEAD_CONVERTED_TO_CLIENT",
     entity: "organization",
     entityId: newOrgId,
-    metadata: { leadId, orgName, clientEmail: lead.email, projectId: newProjectId, inviteToken }
+    metadata: { leadId, orgName, clientEmail: lead.email, projectId: newProjectId, access: access.ok ? access.kind : access.error }
   });
 
   revalidatePath("/admin/leads");
   revalidatePath("/admin/clients");
   revalidatePath("/admin/projects");
-  return { success: true, orgId: newOrgId, projectId: newProjectId, inviteSent: true, inviteUrl };
+  return {
+    success: true,
+    orgId: newOrgId,
+    projectId: newProjectId,
+    inviteSent: access.ok,
+    accessResult: access.ok ? (access.kind === "invite" ? "Invite sent" : "Sign-in link sent") : access.error,
+  };
 }
 
 export async function markLeadSpamAction(leadId: string) {
@@ -256,24 +232,26 @@ export async function replyLeadEmailAction(leadId: string, subject: string, body
   if (leadRes.rows.length === 0) return { error: "Lead not found" };
   const lead = leadRes.rows[0];
 
-  // Record in email_logs
-  await query(
-    `INSERT INTO email_logs (recipient, template, subject, status, metadata)
-     VALUES ($1, $2, $3, 'SENT', $4)`,
-    [
-      lead.email,
-      template,
-      subject,
-      JSON.stringify({ leadId, leadName: lead.name, sentBy: staff.name })
-    ]
-  );
+  // Send for real (sendMail logs it in email_logs); replies come back to the team inbox.
+  const { sendMail, HELLO_REPLY_TO } = await import("@/lib/email");
+  const sent = await sendMail({
+    template: `lead_reply_${template}`.toLowerCase(),
+    to: lead.email,
+    replyTo: HELLO_REPLY_TO,
+    subject,
+    text: body,
+  });
 
-  // Add confirmation note in lead_notes
+  // Note in lead_notes either way, so the history shows what happened
   await query(
     `INSERT INTO lead_notes (lead_id, author_id, author_name, body)
      VALUES ($1, $2, $3, $4)`,
-    [leadId, staff.id, staff.name, `[Email Sent: ${subject}]\n${body}`]
+    [leadId, staff.id, staff.name, `[Email ${sent.ok ? "Sent" : "FAILED"}: ${subject}]${sent.ok ? "" : ` (${sent.error})`}\n${body}`]
   );
+  if (!sent.ok) {
+    revalidatePath(`/admin/leads/${leadId}`);
+    return { error: `Email not sent: ${sent.error}` };
+  }
 
   await logAdminAudit({
     userId: staff.id,
@@ -1365,21 +1343,15 @@ export async function changeStaffPasswordAction(params: {
     return { error: "New password must be at least 8 characters long." };
   }
 
-  const userRes = await query("SELECT password_hash FROM users WHERE id = $1", [staff.id]);
-  const currentHash = userRes.rows[0]?.password_hash;
-
-  if (currentHash) {
-    const isValid = verifyPassword(params.currentPassword, currentHash);
-    if (!isValid) {
-      return { error: "Current password does not match our records." };
-    }
+  // Re-check the current password if given (invited staff may not have one yet).
+  if (params.currentPassword) {
+    const { error: checkErr } = await supabaseAnon.auth.signInWithPassword({ email: staff.email, password: params.currentPassword });
+    if (checkErr) return { error: "Current password does not match our records." };
   }
-
-  const newHash = hashPassword(params.newPassword);
-  await query(
-    "UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2",
-    [newHash, staff.id]
-  );
+  const supabase = await supabaseServer();
+  const { error: pwErr } = await supabase.auth.updateUser({ password: params.newPassword });
+  if (pwErr) return { error: pwErr.message };
+  await query("UPDATE users SET password_hash = NULL, updated_at = NOW() WHERE id = $1", [staff.id]);
 
   await logAdminAudit({
     userId: staff.id,
@@ -1410,6 +1382,13 @@ export async function toggleStaffTwoFactorAction(params: {
     "UPDATE users SET totp_enabled = $1, totp_secret = $2, totp_required = true, updated_at = NOW() WHERE id = $3",
     [params.enable, params.secret || null, staff.id]
   );
+  if (params.enable) {
+    // They just proved the code, so this session counts as two-step verified.
+    const { getAuthContext } = await import("@/lib/auth-server");
+    const { markMfaVerified } = await import("@/lib/mfa");
+    const ctx = await getAuthContext();
+    if (ctx?.sessionId) await markMfaVerified(ctx.authUserId, ctx.sessionId);
+  }
 
   await logAdminAudit({
     userId: staff.id,
@@ -1858,15 +1837,18 @@ export async function editClientBillingDetailsAction(orgId: string, params: {
 
 export async function inviteOrgUserAction(orgId: string, email: string, name: string, role: string = "MEMBER") {
   const staff = await requireStaffUser("clients:write");
+  email = email.trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { error: "Enter a valid email address." };
 
   let userId: string;
-  const existingUser = await query("SELECT id FROM users WHERE email = $1", [email]);
+  const existingUser = await query<{ id: string; role: string }>("SELECT id, role FROM users WHERE LOWER(email) = $1", [email]);
   if (existingUser.rows.length > 0) {
+    if (existingUser.rows[0].role !== "CLIENT") return { error: "This email belongs to a staff account." };
     userId = existingUser.rows[0].id;
   } else {
-    const newUser = await query(
-      `INSERT INTO users (name, email, role) VALUES ($1, $2, 'CLIENT') RETURNING id`,
-      [name, email]
+    const newUser = await query<{ id: string }>(
+      `INSERT INTO users (name, email, role, active, invited_by_id) VALUES ($1, $2, 'CLIENT', true, $3) RETURNING id`,
+      [name, email, staff.id]
     );
     userId = newUser.rows[0].id;
   }
@@ -1878,13 +1860,15 @@ export async function inviteOrgUserAction(orgId: string, email: string, name: st
     [orgId, userId, role]
   );
 
+  const access = await sendAccessEmail({ email, area: "portal", name, invitedById: staff.id });
+
   await logAdminAudit({
     userId: staff.id,
     userName: staff.name,
     action: "ORGANIZATION_USER_INVITED",
     entity: "membership",
     entityId: orgId,
-    metadata: { userEmail: email, role }
+    metadata: { userEmail: email, role, access: access.ok ? access.kind : access.error }
   });
 
   await notifyUser(userId, orgId, {
@@ -1895,13 +1879,16 @@ export async function inviteOrgUserAction(orgId: string, email: string, name: st
   });
 
   revalidatePath(`/admin/clients/${orgId}`);
-  return { success: true };
+  if (!access.ok) return { error: `User added, but the email was not sent: ${access.error}`, retryAfterSeconds: access.retryAfterSeconds };
+  return { success: true, message: access.kind === "invite" ? "Invite sent" : "Sign-in link sent" };
 }
 
 export async function removeOrgUserAction(orgId: string, userId: string) {
   const staff = await requireStaffUser("clients:write");
 
   await query("DELETE FROM memberships WHERE org_id = $1 AND user_id = $2", [orgId, userId]);
+  const remaining = await query("SELECT 1 FROM memberships WHERE user_id = $1 LIMIT 1", [userId]);
+  if (remaining.rowCount === 0) await revokeAccess(userId, staff.id);
 
   await logAdminAudit({
     userId: staff.id,
@@ -2049,56 +2036,21 @@ export async function resendClientPortalInviteAction(params: {
   role?: string;
 }) {
   const staff = await requireStaffUser("clients:write");
-
-  const orgRes = await query("SELECT name FROM organizations WHERE id = $1", [params.orgId]);
-  if (orgRes.rows.length === 0) return { error: "Organization not found" };
-  const orgName = orgRes.rows[0].name.replace(/^\[DEACTIVATED\]\s*/i, "").trim();
-
-  const inviteToken = crypto.randomBytes(32).toString("hex");
-  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-
-  await query("DELETE FROM invites WHERE email = $1", [params.email]);
-
-  await query(
-    `INSERT INTO invites (org_id, email, role, token, expires_at)
-     VALUES ($1, $2, $3, $4, $5)`,
-    [params.orgId, params.email, (params.role as any) || "MEMBER", inviteToken, expiresAt]
-  );
-
-  // Client invites are accepted on the portal host.
-  const inviteUrl = portalUrl(`/invite/${inviteToken}`);
-  const displayName = params.name || params.email.split("@")[0];
-
-  try {
-    await sendEmailWithLog({
-      templateKey: "invite",
-      to: params.email,
-      data: {
-        name: displayName,
-        email: params.email,
-        invite_url: inviteUrl,
-        org_name: orgName,
-        inviter_name: staff.name,
-        role: params.role === "OWNER" ? "Organization Owner" : "Team Member",
-        expires_in: "7 days",
-      },
-      metadata: { orgId: params.orgId, email: params.email, inviteToken }
-    });
-  } catch (err) {
-    console.error("[ResendInvite] Failed to dispatch portal invitation email:", err);
-  }
+  const access = await sendAccessEmail({ email: params.email, area: "portal", name: params.name, invitedById: staff.id });
 
   await logAdminAudit({
     orgId: params.orgId,
     userId: staff.id,
     userName: staff.name,
-    action: "CLIENT_PORTAL_INVITATION_RESENT",
-    entity: "invite",
+    action: "CLIENT_PORTAL_ACCESS_RESENT",
+    entity: "user",
     entityId: params.orgId,
-    metadata: { email: params.email, inviteToken }
+    metadata: { email: params.email, result: access.ok ? access.kind : access.error }
   });
 
-  return { success: true, inviteUrl };
+  revalidatePath(`/admin/clients/${params.orgId}`);
+  if (!access.ok) return { error: access.error, retryAfterSeconds: access.retryAfterSeconds };
+  return { success: true, message: access.kind === "invite" ? "Invite sent" : "Sign-in link sent" };
 }
 
 // ==========================================
@@ -2812,34 +2764,120 @@ export async function deleteRedirectAction(id: string): Promise<{ success?: bool
 export async function inviteStaffUserAction(params: {
   name: string;
   email: string;
-  staffRole: "ADMIN" | "MANAGER" | "EDITOR" | "SUPPORT";
-}): Promise<{ success?: boolean; error?: string }> {
+  staffRole: "ADMIN" | "MANAGER" | "EDITOR" | "SUPPORT" | "FINANCE";
+}): Promise<{ success?: boolean; error?: string; message?: string; userId?: string; retryAfterSeconds?: number }> {
   const staff = await requireStaffUser("users:manage");
+  const email = params.email.toLowerCase().trim();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { error: "Enter a valid email address." };
 
-  const existing = await query("SELECT id FROM users WHERE email = $1", [params.email.toLowerCase().trim()]);
+  // 1. Profile first: role + permission preset
+  const existing = await query<{ id: string; role: string }>("SELECT id, role FROM users WHERE LOWER(email) = $1", [email]);
+  let userId: string;
   if (existing.rows.length > 0) {
-    await query(
-      "UPDATE users SET staff_role = $1, role = 'STAFF' WHERE id = $2",
-      [params.staffRole, existing.rows[0].id]
-    );
+    if (existing.rows[0].role === "CLIENT") {
+      return { error: "This email belongs to a client account. Use a separate staff email address." };
+    }
+    userId = existing.rows[0].id;
+    await query("UPDATE users SET staff_role = $1, active = true WHERE id = $2", [params.staffRole, userId]);
   } else {
-    await query(
-      `INSERT INTO users (name, email, role, staff_role, totp_required, created_at)
-       VALUES ($1, $2, 'STAFF', $3, true, NOW())`,
-      [params.name.trim(), params.email.toLowerCase().trim(), params.staffRole]
+    const ins = await query<{ id: string }>(
+      `INSERT INTO users (name, email, role, staff_role, totp_required, active, invited_by_id, created_at)
+       VALUES ($1, $2, $3, $4, true, true, $5, NOW()) RETURNING id`,
+      [params.name.trim(), email, "STAFF", params.staffRole, staff.id]
     );
+    userId = ins.rows[0].id;
   }
+
+  // 2. Invite (new person) or sign-in link (already has an account)
+  const access = await sendAccessEmail({ email, area: "admin", name: params.name, invitedById: staff.id });
 
   await logAdminAudit({
     userId: staff.id,
     userName: staff.name,
     action: "STAFF_INVITED",
     entity: "user",
-    metadata: { email: params.email, role: params.staffRole }
+    entityId: userId,
+    metadata: { email, role: params.staffRole, result: access.ok ? access.kind : access.error }
   });
 
   revalidatePath("/admin/users");
+  if (!access.ok) {
+    return { userId, error: `Profile created, but the email was not sent: ${access.error}`, retryAfterSeconds: access.retryAfterSeconds };
+  }
+  return { success: true, userId, message: access.kind === "invite" ? "Invite sent" : "Sign-in link sent" };
+}
+
+/** Resend: picks invite vs sign-in link automatically; 60s cooldown enforced server-side. */
+export async function resendAccessAction(userId: string): Promise<{ success?: boolean; error?: string; message?: string; retryAfterSeconds?: number }> {
+  const staff = await requireStaffUser();
+  const u = await query<{ email: string; name: string; role: string }>("SELECT email, name, role FROM users WHERE id = $1", [userId]);
+  const target = u.rows[0];
+  if (!target) return { error: "User not found" };
+  const isStaffTarget = target.role !== "CLIENT";
+  const { hasPermission } = await import("@/lib/admin-permissions-client");
+  if (!hasPermission(staff.staffRole, isStaffTarget ? "users:manage" : "clients:write")) return { error: "You don't have permission to do that." };
+
+  const access = await sendAccessEmail({ email: target.email, area: isStaffTarget ? "admin" : "portal", name: target.name, invitedById: staff.id });
+  await logAdminAudit({
+    userId: staff.id,
+    userName: staff.name,
+    action: "ACCESS_EMAIL_RESENT",
+    entity: "user",
+    entityId: userId,
+    metadata: { email: target.email, result: access.ok ? access.kind : access.error }
+  });
+  revalidatePath("/admin/users");
+  if (!access.ok) return { error: access.error, retryAfterSeconds: access.retryAfterSeconds };
+  return { success: true, message: access.kind === "invite" ? "Invite sent" : "Sign-in link sent" };
+}
+
+/** Staff targets need users:manage; client targets need clients:write. */
+async function requireAccessManager(userId: string) {
+  const staff = await requireStaffUser();
+  const t = await query<{ role: string }>("SELECT role FROM users WHERE id = $1", [userId]);
+  const { hasPermission } = await import("@/lib/admin-permissions-client");
+  const needed = t.rows[0]?.role === "CLIENT" ? "clients:write" : "users:manage";
+  return { staff, allowed: Boolean(t.rows[0]) && hasPermission(staff.staffRole, needed) };
+}
+
+export async function revokeAccessAction(userId: string): Promise<{ success?: boolean; error?: string; deleted?: boolean }> {
+  const { staff, allowed } = await requireAccessManager(userId);
+  if (!allowed) return { error: "You don't have permission to do that." };
+  if (userId === staff.id) return { error: "You can't revoke your own access." };
+  const res = await revokeAccess(userId, staff.id);
+  await logAdminAudit({ userId: staff.id, userName: staff.name, action: "ACCESS_REVOKED", entity: "user", entityId: userId, metadata: { deletedAuthUser: res.deleted } });
+  revalidatePath("/admin/users");
+  return res.ok ? { success: true, deleted: res.deleted } : { error: res.error };
+}
+
+export async function setAccountActiveAction(userId: string, active: boolean): Promise<{ success?: boolean; error?: string }> {
+  const { staff, allowed } = await requireAccessManager(userId);
+  if (!allowed) return { error: "You don't have permission to do that." };
+  if (userId === staff.id && !active) return { error: "You can't disable your own account." };
+  const res = await setAccountActive(userId, active, staff.id);
+  await logAdminAudit({ userId: staff.id, userName: staff.name, action: active ? "ACCOUNT_ENABLED" : "ACCOUNT_DISABLED", entity: "user", entityId: userId });
+  revalidatePath("/admin/users");
+  return res.ok ? { success: true } : { error: res.error };
+}
+
+/** Clear a staff member's authenticator (admin only, audited). They set it up again on next sign-in. */
+export async function resetTwoStepAction(userId: string): Promise<{ success?: boolean; error?: string }> {
+  const staff = await requireStaffUser("users:manage");
+  if (staff.staffRole !== "ADMIN") return { error: "Only admins can reset two-step sign-in." };
+  await resetTwoStep(userId, staff.id);
+  await logAdminAudit({ userId: staff.id, userName: staff.name, action: "STAFF_TWO_STEP_RESET", entity: "user", entityId: userId });
+  revalidatePath("/admin/users");
   return { success: true };
+}
+
+/** Lead emails (team notification / auto-reply) failed: retry now from the lead page. */
+export async function retryLeadEmailsAction(leadId: string): Promise<{ success?: boolean; error?: string }> {
+  await requireStaffUser("leads:read");
+  const { processLeadEmails } = await import("@/lib/lead-emails");
+  const r = await processLeadEmails(leadId);
+  revalidatePath(`/admin/leads/${leadId}`);
+  revalidatePath("/admin/leads");
+  return r.error ? { error: r.error } : { success: true };
 }
 
 export async function changeStaffRoleAction(userId: string, newRole: string): Promise<{ success?: boolean; error?: string }> {

@@ -1,3 +1,4 @@
+import { accessStatus } from "./access-status";
 import { query } from "./db";
 import { services } from "@/data/services";
 import { solutions } from "@/data/solutions";
@@ -373,7 +374,8 @@ export async function getAdminClientById(id: string) {
 
     const [usersRes, projectsRes, invoicesRes] = await Promise.all([
       query(`
-        SELECT u.id, u.name, u.email, u.phone, m.role AS org_role, u.created_at
+        SELECT u.id, u.name, u.email, u.phone, m.role AS org_role, u.created_at,
+               u.active, u.accepted_at, u.last_login_at, u.invited_at, u.last_access_email_at
         FROM users u
         INNER JOIN memberships m ON m.user_id = u.id
         WHERE m.org_id = $1
@@ -396,7 +398,12 @@ export async function getAdminClientById(id: string) {
       updated_at: org.updated_at ? new Date(org.updated_at).toISOString() : null,
       users: usersRes.rows.map(u => ({
         ...u,
+        status: accessStatus(u),
         created_at: u.created_at ? new Date(u.created_at).toISOString() : null,
+        invited_at: u.invited_at ? new Date(u.invited_at).toISOString() : null,
+        last_login_at: u.last_login_at ? new Date(u.last_login_at).toISOString() : null,
+        accepted_at: u.accepted_at ? new Date(u.accepted_at).toISOString() : null,
+        last_access_email_at: u.last_access_email_at ? new Date(u.last_access_email_at).toISOString() : null,
       })),
       projects: projectsRes.rows.map(p => ({
         ...p,
@@ -1138,13 +1145,13 @@ export async function getAdminStaffUsers() {
         u.role, 
         u.staff_role, 
         u.totp_enabled, 
-        COALESCE(u.last_login_at, (SELECT MAX(last_active) FROM staff_sessions WHERE user_id = u.id), u.created_at) AS last_login_at,
-        u.created_at
+        COALESCE(u.last_login_at, (SELECT MAX(last_active) FROM staff_sessions WHERE user_id = u.id)) AS last_login_at,
+        u.created_at, u.active, u.accepted_at, u.invited_at, u.last_access_email_at
       FROM users u
       WHERE u.role = 'STAFF' OR u.role = 'ADMIN'
       ORDER BY u.name ASC
     `);
-    return res.rows;
+    return res.rows.map((u: any) => ({ ...u, status: accessStatus(u) }));
   } catch (err) {
     console.error("[getAdminStaffUsers error]", err);
     return [];

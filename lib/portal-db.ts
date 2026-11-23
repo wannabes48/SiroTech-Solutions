@@ -1,5 +1,6 @@
 import { portalPath } from "@/lib/hosts";
 import { query } from "./db";
+import { accessStatus } from "./access-status";
 
 // ==========================================
 // 1. Dashboard Aggregate Data
@@ -510,8 +511,9 @@ export async function getPortalOrganization(orgId: string) {
 
 export async function getPortalTeamMembers(orgId: string) {
   const membersRes = await query(
-    `SELECT 
-       u.id, u.name, u.email, u.phone, m.role, 'ACTIVE' AS status, m.created_at
+    `SELECT
+       u.id, u.name, u.email, u.phone, m.role, m.created_at,
+       u.active, u.accepted_at, u.last_login_at, u.invited_at, u.last_access_email_at
      FROM memberships m
      JOIN users u ON u.id = m.user_id
      WHERE m.org_id = $1
@@ -528,20 +530,23 @@ export async function getPortalTeamMembers(orgId: string) {
     [orgId]
   );
 
-  const members = membersRes.rows.map((m: any) => ({
-    id: m.id,
-    name: m.name,
-    email: m.email,
-    role: m.role,
-    title: m.role === "OWNER" ? "Authorized Director & Owner" : "Technical Lead / Collaborator",
-    status: "ACTIVE",
-    joinedAt: new Date(m.created_at).toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    }),
-    isOwner: m.role === "OWNER",
-  }));
+  const members = membersRes.rows.map((m: any) => {
+    const s = accessStatus(m);
+    const status = s === "NOT_INVITED" ? "INVITED" : s; // ACTIVE | INVITED | EXPIRED | DISABLED
+    return {
+      id: m.id,
+      name: m.name,
+      email: m.email,
+      role: m.role,
+      title: m.role === "OWNER" ? "Authorized Director & Owner" : "Technical Lead / Collaborator",
+      status,
+      joinedAt:
+        status === "ACTIVE"
+          ? new Date(m.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+          : "Pending acceptance",
+      isOwner: m.role === "OWNER",
+    };
+  });
 
   const invites = invitesRes.rows.map((inv: any) => ({
     id: inv.id,
