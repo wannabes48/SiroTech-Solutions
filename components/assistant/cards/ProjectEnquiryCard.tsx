@@ -320,7 +320,7 @@ export function ProjectEnquiryCard({ prefill, msgs = [], onSuccess }: ProjectEnq
                   required
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder="Dorah Siro"
+                  placeholder="John Doe"
                   className="w-full px-2.5 py-1.5 rounded-xl bg-surface border border-rule/80 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-600/30 text-ink text-xs"
                 />
               </div>

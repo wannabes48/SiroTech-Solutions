@@ -9,6 +9,6 @@
   },
   "crons": [
     { "path": "/api/cron/retention", "schedule": "0 2 * * *" },
-    { "path": "/api/cron/lead-emails", "schedule": "*/15 * * * *" }
+    { "path": "/api/cron/lead-emails", "schedule": "0 6 * * *" }
   ]
 }
