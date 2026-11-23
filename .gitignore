@@ -72,3 +72,5 @@ Thumbs.db
 *.sublime-project
 *.swp
 *.swo
+
+/brag-output

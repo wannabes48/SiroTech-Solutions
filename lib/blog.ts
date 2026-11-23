@@ -33,8 +33,8 @@ export interface BlogCategory {
 
 function getBlogDirectories(): string[] {
   return [
-    path.join(process.cwd(), "content", "blog"),
-    path.join(process.cwd(), "src", "content", "blog"),
+    path.join(/* turbopackIgnore: true */ process.cwd(), "content", "blog"),
+    path.join(/* turbopackIgnore: true */ process.cwd(), "src", "content", "blog"),
   ];
 }
 

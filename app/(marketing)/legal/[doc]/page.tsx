@@ -23,8 +23,8 @@ const legalDocsList = [
 
 function getDocPath(slug: string): string | null {
   const paths = [
-    path.join(process.cwd(), "src", "content", "legal", `${slug}.mdx`),
-    path.join(process.cwd(), "content", "legal", `${slug}.mdx`),
+    path.join(/* turbopackIgnore: true */ process.cwd(), "src", "content", "legal", `${slug}.mdx`),
+    path.join(/* turbopackIgnore: true */ process.cwd(), "content", "legal", `${slug}.mdx`),
   ];
   for (const p of paths) {
     if (fs.existsSync(p)) return p;
@@ -81,7 +81,7 @@ function parseMdx(content: string) {
 }
 
 export function generateStaticParams() {
-  const dir = path.join(process.cwd(), "content", "legal");
+  const dir = path.join(/* turbopackIgnore: true */ process.cwd(), "content", "legal");
   if (!fs.existsSync(dir)) return [];
   const files = fs.readdirSync(dir);
   return files
@@ -98,7 +98,7 @@ export async function generateMetadata({
   const filePath = getDocPath(doc);
   if (!filePath) return { title: "Document Not Found" };
 
-  const raw = fs.readFileSync(filePath, "utf8");
+  const raw = fs.readFileSync(/* turbopackIgnore: true */ filePath, "utf8");
   const { title, description } = parseMdx(raw);
 
   return {
@@ -119,7 +119,7 @@ export default async function LegalDocPage({
     notFound();
   }
 
-  const fileContent = fs.readFileSync(filePath, "utf8");
+  const fileContent = fs.readFileSync(/* turbopackIgnore: true */ filePath, "utf8");
   const { title, lastUpdated, description, body, toc } = parseMdx(fileContent);
 
   // Render markdown lines to styled JSX
