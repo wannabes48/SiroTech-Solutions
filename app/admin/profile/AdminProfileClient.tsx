@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState, useTransition } from "react";
+import React, { useEffect, useState, useTransition } from "react";
+import QRCode from "qrcode";
 import { useRouter } from "next/navigation";
 import {
   updateStaffProfileAction,
@@ -122,6 +123,22 @@ export function AdminProfileClient({
     return Array.from(bytes, (b) => alphabet[b & 31]).join("");
   });
   const [totpError, setTotpError] = useState<string | null>(null);
+  const [setupMode, setSetupMode] = useState<"qr" | "key">("qr");
+  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
+
+  // QR is rendered locally so the secret never leaves the browser.
+  useEffect(() => {
+    if (!show2FAModal) return;
+    const label = encodeURIComponent(`SiroTech:${profile?.email || "staff"}`);
+    const uri = `otpauth://totp/${label}?secret=${totpSecret}&issuer=SiroTech&algorithm=SHA1&digits=6&period=30`;
+    let cancelled = false;
+    QRCode.toDataURL(uri, { width: 220, margin: 1, errorCorrectionLevel: "M" })
+      .then((url) => !cancelled && setQrDataUrl(url))
+      .catch(() => !cancelled && setQrDataUrl(null));
+    return () => {
+      cancelled = true;
+    };
+  }, [show2FAModal, totpSecret, profile?.email]);
 
   // Toast
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -685,14 +702,67 @@ export function AdminProfileClient({
               </button>
             </div>
 
-            <div className="p-3.5 rounded-2xl bg-surface/80 border border-rule/60 text-xs space-y-2">
-              <span className="font-semibold text-ink block">1. Add Secret Key to Authenticator App:</span>
-              <div className="p-2 rounded-xl bg-white border border-rule font-mono font-bold text-ink text-center text-xs tracking-wider select-all">
-                {totpSecret}
+            <div className="p-3.5 rounded-2xl bg-surface/80 border border-rule/60 text-xs space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-semibold text-ink">1. Add to your authenticator app</span>
+                <div className="inline-flex rounded-full bg-white border border-rule p-0.5" role="tablist">
+                  {(["qr", "key"] as const).map((m) => (
+                    <button
+                      key={m}
+                      type="button"
+                      role="tab"
+                      aria-selected={setupMode === m}
+                      onClick={() => setSetupMode(m)}
+                      className={`px-3 py-1 rounded-full text-[11px] font-semibold cursor-pointer ${
+                        setupMode === m ? "bg-[#1B2E24] text-white" : "text-muted hover:text-ink"
+                      }`}
+                    >
+                      {m === "qr" ? "Scan QR" : "Enter key"}
+                    </button>
+                  ))}
+                </div>
               </div>
-              <p className="text-[11px] text-muted">
-                Scan or paste this secret into Google Authenticator, Authy, or 1Password.
-              </p>
+
+              {setupMode === "qr" ? (
+                <div className="flex flex-col items-center gap-2">
+                  {qrDataUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={qrDataUrl}
+                      alt="Authenticator setup QR code"
+                      width={176}
+                      height={176}
+                      className="w-44 h-44 rounded-xl bg-white border border-rule p-2"
+                    />
+                  ) : (
+                    <div className="w-44 h-44 rounded-xl bg-white border border-rule animate-pulse" />
+                  )}
+                  <p className="text-[11px] text-muted text-center">
+                    Open Google Authenticator, Authy, or 1Password, tap <b>Add</b> → <b>Scan a QR code</b>, and point it here.{" "}
+                    <button type="button" onClick={() => setSetupMode("key")} className="underline hover:text-ink cursor-pointer">
+                      Can&apos;t scan?
+                    </button>
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <div className="p-2 rounded-xl bg-white border border-rule font-mono font-bold text-ink text-center text-xs tracking-wider select-all break-all">
+                    {totpSecret.match(/.{1,4}/g)?.join(" ")}
+                  </div>
+                  <div className="flex justify-center">
+                    <button
+                      type="button"
+                      onClick={() => navigator.clipboard?.writeText(totpSecret)}
+                      className="text-[11px] font-semibold text-emerald-800 hover:underline cursor-pointer"
+                    >
+                      Copy key
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-muted">
+                    In your app choose <b>Enter a setup key</b>, account <b>SiroTech</b>, type <b>Time-based</b>, then paste this key.
+                  </p>
+                </div>
+              )}
             </div>
 
             <form onSubmit={handleConfirm2FA} className="space-y-4 text-xs">
