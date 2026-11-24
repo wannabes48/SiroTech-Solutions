@@ -3,6 +3,9 @@ import React from "react";
 import Link from "next/link";
 import { requireStaffUser, can, presetLabel } from "@/lib/admin-permissions";
 import { query } from "@/lib/db";
+import { getScopeSet, filterByScope } from "@/lib/admin-scope";
+import { getPendingApprovals } from "@/lib/approvals";
+import { ApprovalsPanel } from "@/components/admin/ApprovalsPanel";
 import { getAdminOverviewData } from "@/lib/admin-db";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { AdminStatusPill } from "@/components/admin/AdminStatusPill";
@@ -33,18 +36,23 @@ export default async function AdminDashboardPage() {
   const staff = await requireStaffUser();
   const data = await getAdminOverviewData();
   // Only widgets this person may read are rendered (and so sent to the browser).
+  // Business-wide totals are hidden from assigned-only staff.
+  const full = staff.scope === "all";
   const show = {
-    pipeline: can(staff, "leads:read"),
-    money: can(staff, "invoices:read"),
-    payments: can(staff, "payments:read"),
-    tickets: can(staff, "tickets:read"),
-    messages: can(staff, "messages:read"),
-    delivery: can(staff, "projects:read"),
+    pipeline: full && can(staff, "leads:read"),
+    money: full && can(staff, "invoices:read"),
+    payments: full && can(staff, "payments:read"),
+    tickets: full && can(staff, "tickets:read"),
+    messages: full && can(staff, "messages:read"),
+    delivery: full && can(staff, "projects:read"),
     analytics: can(staff, "analytics:read"),
     system: can(staff, "health:read"),
     audit: can(staff, "audit:read")
   };
-  const requests = show.delivery ? await getProjectRequests(can(staff, "projects:write") ? null : staff.id) : [];
+  const requests = can(staff, "projects:read")
+    ? filterByScope(await getProjectRequests(can(staff, "projects:write") ? null : staff.id), await getScopeSet(staff), { project: "id" })
+    : [];
+  const approvals = staff.isOwner ? await getPendingApprovals() : [];
   const { metrics, today, pipelineByStage, money, projectsAtRisk, site, system, recentLeads, recentActivity, activeProjects } = data;
 
   const firstName = staff.name.split(" ")[0];
@@ -68,6 +76,8 @@ export default async function AdminDashboardPage() {
           icon: <Activity className="w-3.5 h-3.5" />
         } : undefined}
       />
+
+      {approvals.length > 0 && <ApprovalsPanel approvals={JSON.parse(JSON.stringify(approvals))} />}
 
       {requests.length > 0 && (
         <div className="bg-amber-50 rounded-3xl border border-amber-300 p-6 shadow-xs space-y-3">

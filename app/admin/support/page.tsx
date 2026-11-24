@@ -1,13 +1,16 @@
 import React from "react";
 import { requireStaffUser } from "@/lib/admin-permissions";
+import { getScopeSet, filterByScope, enforceScope } from "@/lib/admin-scope";
+
 import { getAdminTickets, getAdminCannedReplies, getAdminContactInquiries } from "@/lib/admin-db";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { AdminSupportClient } from "./AdminSupportClient";
 
 export default async function AdminSupportPage() {
-  await requireStaffUser("tickets:read");
+  const staff = await requireStaffUser("tickets:read");
+  const scope = await getScopeSet(staff);
   const [tickets, cannedReplies, contactInquiries] = await Promise.all([
-    getAdminTickets(),
+    getAdminTickets().then((rows) => filterByScope(rows, scope, { project: "project_id", org: "org_id" })),
     getAdminCannedReplies(),
     getAdminContactInquiries()
   ]);

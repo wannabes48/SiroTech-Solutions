@@ -30,11 +30,15 @@ function modeFor(overrides: string[], perm: string): Mode {
  */
 export function StaffPermissionEditor({
   user,
-  onClose
+  onClose,
+  runWithReauth = (fn) => fn()
 }: {
-  user: { id: string; name: string; preset: PresetKey; overrides: string[] };
+  user: { id: string; name: string; preset: PresetKey; overrides: string[]; scope?: "all" | "assigned" };
   onClose: () => void;
+  /** Wraps the save so the owner is asked to re-authenticate when needed. */
+  runWithReauth?: <T>(fn: () => Promise<T>) => Promise<T>;
 }) {
+  const [scope, setScope] = useState<"all" | "assigned">(user.scope || "all");
   const router = useRouter();
   const [preset, setPreset] = useState<PresetKey>(user.preset);
   const [overrides, setOverrides] = useState<string[]>(user.overrides || []);
@@ -57,7 +61,7 @@ export function StaffPermissionEditor({
   const save = () =>
     startTransition(async () => {
       setError(null);
-      const res = await setStaffAccessAction(user.id, { preset, overrides });
+      const res = await runWithReauth(() => setStaffAccessAction(user.id, { preset, overrides, scope }));
       if (res?.error) {
         setError(res.error);
         return;
@@ -107,6 +111,31 @@ export function StaffPermissionEditor({
             ))}
           </div>
         </div>
+
+        {preset !== "admin" && (
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="font-semibold text-ink">Access to clients</span>
+            <div className="inline-flex rounded-full border border-rule p-0.5" role="radiogroup" aria-label="Client access">
+              {(["all", "assigned"] as const).map((v) => (
+                <button
+                  key={v}
+                  type="button"
+                  role="radio"
+                  aria-checked={scope === v}
+                  onClick={() => setScope(v)}
+                  className={`px-3 py-1 rounded-full font-semibold cursor-pointer ${scope === v ? "bg-[#1B2E24] text-white" : "text-muted"}`}
+                >
+                  {v === "all" ? "All clients and projects" : "Only assigned"}
+                </button>
+              ))}
+            </div>
+            <span className="text-muted flex-1 min-w-[220px]">
+              {scope === "assigned"
+                ? "Only clients where they're the account manager and projects where they're the delivery lead. Business-wide totals, exports and reports are hidden."
+                : "Sees every client and project their permissions allow."}
+            </span>
+          </div>
+        )}
 
         {preset === "admin" && (
           <p className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900">

@@ -22,6 +22,7 @@ type StaffRow = {
   staff_role: string | null;
   staff_preset?: string | null;
   staff_permissions?: string[] | null;
+  staff_scope?: string | null;
   totp_enabled: boolean | null;
   totp_secret: string | null;
 };
@@ -29,11 +30,19 @@ type StaffRow = {
 async function loadStaffRow(userId: string): Promise<StaffRow | null> {
   try {
     const res = await query<StaffRow>(
-      "SELECT staff_role, staff_preset, staff_permissions, totp_enabled, totp_secret FROM users WHERE id = $1",
+      "SELECT staff_role, staff_preset, staff_permissions, staff_scope, totp_enabled, totp_secret FROM users WHERE id = $1",
       [userId]
     );
     return res.rows[0] || null;
   } catch {
+    // Before scripts/migrate-staff-controls.js: no staff_scope yet.
+    try {
+      const res = await query<StaffRow>(
+        "SELECT staff_role, staff_preset, staff_permissions, totp_enabled, totp_secret FROM users WHERE id = $1",
+        [userId]
+      );
+      return res.rows[0] || null;
+    } catch {}
     // Before scripts/migrate-staff-permissions.js has run: legacy columns only.
     const res = await query<StaffRow>("SELECT staff_role, totp_enabled, totp_secret FROM users WHERE id = $1", [userId]);
     return res.rows[0] || null;
@@ -96,7 +105,8 @@ export async function requireStaffUser(requiredPermission?: string, opts: Requir
     preset,
     overrides: isOwner ? [] : sanitizeOverrides(row?.staff_permissions || []),
     isOwner,
-    totpEnabled
+    totpEnabled,
+    scope: !isOwner && row?.staff_scope === "assigned" ? "assigned" : "all"
   };
 
   if (requiredPermission && !can(staffUser, requiredPermission)) {

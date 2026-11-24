@@ -25,6 +25,7 @@ import { supabaseServer } from "@/lib/supabase/server";
 import { getTemplateDefinition, sendEmailWithLog } from "@/lib/email-templates/renderer";
 import { validateTemplateVariables } from "@/lib/email-templates/interpolator";
 import { getGoogleAnalyticsReport, clearAnalyticsCache, GoogleAnalyticsReportData } from "@/lib/analytics/google-analytics";
+import { enforceScope, isInScope } from "@/lib/admin-scope";
 
 // ==========================================
 // 1. Leads Pipeline Actions
@@ -105,6 +106,10 @@ export async function convertLeadToClientAction(leadId: string) {
     ]
   );
   const newOrgId = orgRes.rows[0].id;
+  if (!staff.isOwner) {
+    // Whoever wins the deal manages the account (keeps it in scope for assigned-only staff).
+    await query("UPDATE organizations SET account_manager_id = $1 WHERE id = $2", [staff.id, newOrgId]).catch(() => {});
+  }
 
   // Check if user already exists or create new client user
   const userCheck = await query("SELECT id FROM users WHERE email = $1", [lead.email]);
@@ -492,6 +497,31 @@ export async function toggleAdminTaskDoneAction(taskId: string, isDone: boolean)
 // 3. Invoices & Billing Operations
 // ==========================================
 /**
+ * Billing gated on delivery: an invoice linked to a milestone can only go out when
+ * the client APPROVED it or delivery ticked "Ready to bill". Stops billing ahead of delivery.
+ */
+async function checkMilestoneBillable(
+  milestoneId: string
+): Promise<{ ok: boolean; error?: string; milestone?: { id: string; project_id: string; org_id: string; title: string } }> {
+  let row: { id: string; project_id: string; org_id: string; title: string; status: string; ready_to_bill: boolean } | undefined;
+  try {
+    const r = await query<any>(
+      `SELECT m.id, m.project_id, p.org_id, m.title, m.status::text AS status, COALESCE(m.ready_to_bill, false) AS ready_to_bill
+       FROM milestones m JOIN projects p ON p.id = m.project_id WHERE m.id = $1`,
+      [milestoneId]
+    );
+    row = r.rows[0];
+  } catch {
+    return { ok: false, error: "Milestone billing needs scripts/migrate-staff-controls.js to be run first." };
+  }
+  if (!row) return { ok: false, error: "Milestone not found." };
+  if (row.status !== "APPROVED" && !row.ready_to_bill) {
+    return { ok: false, error: `"${row.title}" isn't approved by the client yet. Ask delivery to mark it Ready to bill, or wait for approval.` };
+  }
+  return { ok: true, milestone: { id: row.id, project_id: row.project_id, org_id: row.org_id, title: row.title } };
+}
+
+/**
  * Money safeguard: a payment marked received by hand (bank, cash, matched M-Pesa)
  * is flagged "manual" on the payment row and in the audit log, and the owners are
  * alerted unless an owner did it themselves.
@@ -523,6 +553,7 @@ async function flagManualPayment(
 
 export async function recordManualPaymentAction(invoiceId: string, amountKes: number, method: string, reference: string) {
   const staff = await requireStaffUser("invoices:markpaid");
+  await enforceScope(staff, { invoiceId });
 
   const invRes = await query("SELECT org_id, amount_kes FROM invoices WHERE id = $1", [invoiceId]);
   if (invRes.rows.length === 0) return { error: "Invoice not found" };
@@ -571,6 +602,12 @@ export async function recordManualPaymentAction(invoiceId: string, amountKes: nu
 
 export async function voidInvoiceAction(invoiceId: string, reason: string) {
   const staff = await requireStaffUser("invoices:void");
+  await enforceScope(staff, { invoiceId });
+  return executeVoidInvoice(staff, invoiceId, reason);
+}
+
+/** Shared by the direct action and an approved request (staff = whoever authorised it). */
+async function executeVoidInvoice(staff: StaffSessionUser, invoiceId: string, reason: string, approvalId?: string) {
 
   await query(
     "UPDATE invoices SET status = 'VOID', void_reason = $1 WHERE id = $2",
@@ -583,7 +620,7 @@ export async function voidInvoiceAction(invoiceId: string, reason: string) {
     action: "INVOICE_VOIDED",
     entity: "invoice",
     entityId: invoiceId,
-    metadata: { reason }
+    metadata: { reason, approvalId: approvalId || null }
   });
 
   revalidatePath("/admin/invoices");
@@ -593,6 +630,11 @@ export async function voidInvoiceAction(invoiceId: string, reason: string) {
 
 export async function refundInvoiceAction(invoiceId: string, amountKes: number, reason: string) {
   const staff = await requireStaffUser("payments:refund");
+  await enforceScope(staff, { invoiceId });
+  return executeRefundInvoice(staff, invoiceId, amountKes, reason);
+}
+
+async function executeRefundInvoice(staff: StaffSessionUser, invoiceId: string, amountKes: number, reason: string, approvalId?: string) {
 
   await query(
     "UPDATE invoices SET status = 'REFUNDED', refunded_amount_kes = $1, void_reason = $2 WHERE id = $3",
@@ -605,7 +647,7 @@ export async function refundInvoiceAction(invoiceId: string, amountKes: number, 
     action: "INVOICE_REFUNDED",
     entity: "invoice",
     entityId: invoiceId,
-    metadata: { amountKes, reason }
+    metadata: { amountKes, reason, approvalId: approvalId || null }
   });
 
   revalidatePath("/admin/invoices");
@@ -621,10 +663,22 @@ export async function createAdminInvoiceAction(params: {
   dueDate: string;
   notes?: string;
   discountKes?: number;
+  /** Bill a specific milestone: only allowed once it's APPROVED or delivery marked it Ready to bill. */
+  milestoneId?: string;
 }) {
   const staff = await requireStaffUser("invoices:write");
+  await enforceScope(staff, { orgId: params.orgId });
   // Creating an invoice also emails it to the client.
   if (!can(staff, "invoices:send")) return { error: "You can draft invoices, but sending them needs the invoices:send permission." };
+
+  let gatedMilestone: { id: string; project_id: string; title: string } | null = null;
+  if (params.milestoneId) {
+    const gate = await checkMilestoneBillable(params.milestoneId);
+    if (!gate.ok || !gate.milestone) return { error: gate.error };
+    if (gate.milestone.org_id !== params.orgId) return { error: "That milestone belongs to a different client." };
+    gatedMilestone = gate.milestone;
+    params = { ...params, projectId: gate.milestone.project_id };
+  }
 
   const subtotal = params.lineItems.reduce((acc, curr) => acc + (curr.quantity * curr.unitPrice), 0);
   const discount = params.discountKes || 0;
@@ -707,6 +761,9 @@ export async function createAdminInvoiceAction(params: {
   );
 
   const invoiceId = res.rows[0].id;
+  if (gatedMilestone) {
+    await query("UPDATE invoices SET milestone_id = $1 WHERE id = $2", [gatedMilestone.id, invoiceId]).catch(() => {});
+  }
 
   // Insert invoice line items into invoice_items
   for (let i = 0; i < params.lineItems.length; i++) {
@@ -809,6 +866,7 @@ export async function resolveUnmatchedMpesaAction(params: {
   invoiceId: string;
 }) {
   const staff = await requireStaffUser("invoices:markpaid");
+  await enforceScope(staff, { invoiceId: params.invoiceId });
 
   const invRes = await query("SELECT org_id, amount_kes FROM invoices WHERE id = $1", [params.invoiceId]);
   if (invRes.rows.length === 0) return { error: "Target invoice not found" };
@@ -850,6 +908,15 @@ export async function refundPaystackPaymentAction(params: {
   reason: string;
 }) {
   const staff = await requireStaffUser("payments:refund");
+  await enforceScope(staff, { paymentId: params.paymentId });
+  return executeRefundPayment(staff, params);
+}
+
+async function executeRefundPayment(
+  staff: StaffSessionUser,
+  params: { paymentId: string; amountKes: number; reason: string },
+  approvalId?: string
+) {
 
   const payRes = await query("SELECT * FROM payments WHERE id = $1", [params.paymentId]);
   if (payRes.rows.length === 0) return { error: "Payment record not found." };
@@ -916,6 +983,7 @@ export async function refundPaystackPaymentAction(params: {
       reason: params.reason,
       staffEmail: staff.email,
       staffPreset: staff.preset,
+      approvalId: approvalId || null,
       gatewayResponse: gatewayRefundRes
     }
   });
@@ -928,6 +996,7 @@ export async function refundPaystackPaymentAction(params: {
 
 export async function togglePauseRecurringPlanAction(planId: string, pause: boolean) {
   const staff = await requireStaffUser("recurring:write");
+  await enforceScope(staff, { planId });
   const newStatus = pause ? "PAUSED" : "ACTIVE";
   
   await query(
@@ -961,6 +1030,7 @@ export async function editRecurringPlanAction(params: {
 }) {
   try {
     const staff = await requireStaffUser("recurring:write");
+    await enforceScope(staff, { planId: params.id });
 
     await query(
       `UPDATE recurring_plans 
@@ -1010,6 +1080,7 @@ export async function createRecurringPlanAction(params: {
 }) {
   try {
     const staff = await requireStaffUser("recurring:write");
+    await enforceScope(staff, { orgId: params.orgId });
 
     const res = await query(
       `INSERT INTO recurring_plans (org_id, project_id, title, plan_type, schedule, amount_kes, amount_usd, status, auto_send, next_run_date)
@@ -1049,6 +1120,7 @@ export async function createRecurringPlanAction(params: {
 
 export async function autoCreateAndSendRecurringInvoiceAction(planId: string) {
   const staff = await requireStaffUser("invoices:send");
+  await enforceScope(staff, { planId });
 
   const planRes = await query(
     `SELECT rp.*, o.name AS org_name, o.billing_email
@@ -1152,6 +1224,7 @@ export async function autoCreateAndSendRecurringInvoiceAction(planId: string) {
 
 export async function dismissRecurringFailureAlertAction(planId: string) {
   const staff = await requireStaffUser("recurring:write");
+  await enforceScope(staff, { planId });
   await query("UPDATE recurring_plans SET failure_alert = NULL, updated_at = NOW() WHERE id = $1", [planId]);
   
   await logAdminAudit({
@@ -1171,6 +1244,7 @@ export async function dismissRecurringFailureAlertAction(planId: string) {
 // ==========================================
 export async function replySupportTicketAction(ticketId: string, message: string, newStatus?: string) {
   const staff = await requireStaffUser("tickets:write");
+  await enforceScope(staff, { ticketId });
 
   if (!message.trim()) return { error: "Reply message cannot be empty" };
 
@@ -1221,6 +1295,7 @@ export async function replySupportTicketAction(ticketId: string, message: string
 
 export async function updateSupportTicketInternalNoteAction(ticketId: string, internalNotes: string) {
   const staff = await requireStaffUser("tickets:write");
+  await enforceScope(staff, { ticketId });
 
   await query(
     "UPDATE support_tickets SET internal_notes = $1, updated_at = NOW() WHERE id = $2",
@@ -1242,6 +1317,7 @@ export async function updateSupportTicketInternalNoteAction(ticketId: string, in
 /** Reassign a ticket to a staff member (default routing: billing/account to the client manager, bugs/changes to delivery). */
 export async function assignSupportTicketAction(ticketId: string, assigneeUserId: string): Promise<{ success?: boolean; error?: string }> {
   const staff = await requireStaffUser("tickets:assign");
+  await enforceScope(staff, { ticketId });
   const u = await query<{ id: string; name: string }>(
     "SELECT id, name FROM users WHERE id = $1 AND role IN ('ADMIN','STAFF') AND COALESCE(active, true) = true",
     [assigneeUserId]
@@ -1908,6 +1984,7 @@ export async function deleteContentItemAction(type: string, slug: string): Promi
 // ==========================================
 export async function startImpersonationAction(orgId: string) {
   const staff = await requireStaffUser("clients:impersonate");
+  await enforceScope(staff, { orgId });
   const cookieStore = await cookies();
 
   // Set read-only impersonation cookie
@@ -1977,6 +2054,7 @@ export async function editClientBillingDetailsAction(orgId: string, params: {
   currency?: string;
 }) {
   const staff = await requireStaffUser("clients:write");
+  await enforceScope(staff, { orgId });
 
   await query(
     `UPDATE organizations 
@@ -2001,6 +2079,7 @@ export async function editClientBillingDetailsAction(orgId: string, params: {
 
 export async function inviteOrgUserAction(orgId: string, email: string, name: string, role: string = "MEMBER") {
   const staff = await requireStaffUser("clients:invite");
+  await enforceScope(staff, { orgId });
   email = email.trim().toLowerCase();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { error: "Enter a valid email address." };
 
@@ -2049,6 +2128,7 @@ export async function inviteOrgUserAction(orgId: string, email: string, name: st
 
 export async function removeOrgUserAction(orgId: string, userId: string) {
   const staff = await requireStaffUser("clients:write");
+  await enforceScope(staff, { orgId });
 
   await query("DELETE FROM memberships WHERE org_id = $1 AND user_id = $2", [orgId, userId]);
   const remaining = await query("SELECT 1 FROM memberships WHERE user_id = $1 LIMIT 1", [userId]);
@@ -2069,6 +2149,7 @@ export async function removeOrgUserAction(orgId: string, userId: string) {
 
 export async function changeOrgUserRoleAction(orgId: string, userId: string, newRole: string) {
   const staff = await requireStaffUser("clients:write");
+  await enforceScope(staff, { orgId });
 
   await query(
     "UPDATE memberships SET role = $1 WHERE org_id = $2 AND user_id = $3",
@@ -2090,6 +2171,7 @@ export async function changeOrgUserRoleAction(orgId: string, userId: string, new
 
 export async function deactivateOrgAction(orgId: string) {
   const staff = await requireStaffUser("clients:archive");
+  await enforceScope(staff, { orgId });
 
   const orgRes = await query("SELECT name FROM organizations WHERE id = $1", [orgId]);
   if (orgRes.rows.length === 0) return { error: "Organization not found" };
@@ -2116,6 +2198,7 @@ export async function deactivateOrgAction(orgId: string) {
 
 export async function reactivateOrgAction(orgId: string) {
   const staff = await requireStaffUser("clients:archive");
+  await enforceScope(staff, { orgId });
 
   const orgRes = await query("SELECT name FROM organizations WHERE id = $1", [orgId]);
   if (orgRes.rows.length === 0) return { error: "Organization not found" };
@@ -2142,6 +2225,7 @@ export async function reactivateOrgAction(orgId: string) {
 
 export async function deleteOrganizationAction(orgId: string) {
   const staff = await requireStaffUser("clients:archive");
+  await enforceScope(staff, { orgId });
 
   const orgRes = await query("SELECT id, name FROM organizations WHERE id = $1", [orgId]);
   if (orgRes.rows.length === 0) return { error: "Organization not found" };
@@ -2168,6 +2252,7 @@ export async function deleteOrganizationAction(orgId: string) {
 
 export async function deleteProjectAction(projectId: string) {
   const staff = await requireStaffUser("projects:write");
+  await enforceScope(staff, { projectId });
 
   const projRes = await query("SELECT id, title, org_id FROM projects WHERE id = $1", [projectId]);
   if (projRes.rows.length === 0) return { error: "Project not found" };
@@ -2200,6 +2285,7 @@ export async function resendClientPortalInviteAction(params: {
   role?: string;
 }) {
   const staff = await requireStaffUser("clients:invite");
+  await enforceScope(staff, { orgId: params.orgId });
   const access = await sendAccessEmail({ email: params.email, area: "portal", name: params.name, invitedById: staff.id });
 
   await logAdminAudit({
@@ -2228,6 +2314,7 @@ export async function createProjectFromTemplateAction(params: {
   targetLaunch?: string;
 }) {
   const staff = await requireStaffUser("projects:write");
+  await enforceScope(staff, { orgId: params.orgId });
 
   const templatesMap: Record<string, { title: string; description: string; phase: string }[]> = {
     "Website": [
@@ -2343,6 +2430,7 @@ export async function updateProjectDetailsAction(
   }
 ) {
   const staff = await requireStaffUser("projects:write");
+  await enforceScope(staff, { projectId });
 
   const fields: string[] = [];
   const values: any[] = [];
@@ -2437,6 +2525,7 @@ export async function addProjectMilestoneAction(projectId: string, params: {
   dueDate?: string;
 }) {
   const staff = await requireStaffUser("milestones:write");
+  await enforceScope(staff, { projectId });
 
   const orderRes = await query("SELECT COALESCE(MAX(order_num), 0) + 1 AS next_order FROM milestones WHERE project_id = $1", [projectId]);
   const nextOrder = orderRes.rows[0]?.next_order || 1;
@@ -2478,6 +2567,7 @@ export async function addProjectMilestoneAction(projectId: string, params: {
 
 export async function updateProjectMilestoneStatusAction(milestoneId: string, status: string, comment?: string) {
   const staff = await requireStaffUser("milestones:write");
+  await enforceScope(staff, { milestoneId });
 
   const mRes = await query("SELECT project_id, title FROM milestones WHERE id = $1", [milestoneId]);
   if (mRes.rows.length === 0) return { error: "Milestone not found" };
@@ -2577,6 +2667,7 @@ export async function postProjectUpdateAction(projectId: string, params: {
   isPinned?: boolean;
 }) {
   const staff = await requireStaffUser("updates:post");
+  await enforceScope(staff, { projectId });
 
   await query(
     `INSERT INTO project_updates (project_id, author_id, author_name, title, body, is_pinned, created_at)
@@ -2612,6 +2703,7 @@ export async function postProjectUpdateAction(projectId: string, params: {
 
 export async function postProjectMessageAction(projectId: string, content: string, isInternal: boolean = false): Promise<{ success?: boolean; error?: string }> {
   const staff = await requireStaffUser("messages:write");
+  await enforceScope(staff, { projectId });
 
   await query(
     `INSERT INTO messages (project_id, author_id, author_name, author_role, is_staff, content, is_internal, created_at)
@@ -2650,6 +2742,7 @@ export async function postProjectMessageAction(projectId: string, content: strin
 
 export async function toggleMessageHandledAction(messageId: string, isHandled: boolean): Promise<{ success?: boolean; error?: string }> {
   const staff = await requireStaffUser("messages:write");
+  await enforceScope(staff, { messageId });
 
   await query(
     `UPDATE messages SET is_handled = $1 WHERE id = $2`,
@@ -2676,6 +2769,7 @@ export async function createProjectProposalAction(projectId: string, params: {
   fileUrl?: string;
 }) {
   const staff = await requireStaffUser("proposals:write");
+  await enforceScope(staff, { projectId });
   // A new proposal shows in the client portal straight away, so this is a send.
   if (!can(staff, "proposals:send")) return { error: "Sending proposals to clients needs the proposals:send permission." };
 
@@ -2927,6 +3021,55 @@ export async function deleteRedirectAction(id: string): Promise<{ success?: bool
 // ==========================================
 // 13. Users & Access Management
 // ==========================================
+/** True when the owner re-entered their code or password in the last few minutes. */
+async function hasRecentReauth(): Promise<boolean> {
+  const { getAuthContext } = await import("@/lib/auth-server");
+  const { isRecentlyReauthenticated } = await import("@/lib/reauth");
+  const ctx = await getAuthContext();
+  return Boolean(ctx && (await isRecentlyReauthenticated(ctx.authUserId, ctx.sessionId)));
+}
+
+const REAUTH_ERROR = { error: "Confirm it's you to make this change.", reauthRequired: true as const };
+
+/**
+ * Re-authenticate before staff changes: authenticator code (if set up) or password.
+ * Valid for 10 minutes on this session. Rate-limited by the failed-attempt audit trail.
+ */
+export async function reauthenticateAction(params: { code?: string; password?: string }): Promise<{ success?: boolean; error?: string }> {
+  const staff = await requireStaffUser("staff:write");
+  const { getAuthContext } = await import("@/lib/auth-server");
+  const ctx = await getAuthContext();
+  if (!ctx) return { error: "Your session has expired. Sign in again." };
+
+  // Simple brute-force guard: 5 failures in 15 minutes locks re-auth for this person.
+  const fails = await query<{ n: string }>(
+    "SELECT COUNT(*) AS n FROM audit_logs WHERE user_id = $1 AND action = 'STAFF_REAUTH_FAILED' AND created_at > NOW() - INTERVAL '15 minutes'",
+    [staff.id]
+  ).catch(() => ({ rows: [{ n: "0" }] }));
+  if (Number(fails.rows[0]?.n || 0) >= 5) return { error: "Too many attempts. Try again in 15 minutes." };
+
+  let ok = false;
+  const code = (params.code || "").replace(/\s+/g, "");
+  if (code) {
+    const r = await query<{ totp_secret: string | null; totp_enabled: boolean | null }>("SELECT totp_secret, totp_enabled FROM users WHERE id = $1", [staff.id]);
+    const row = r.rows[0];
+    if (row?.totp_enabled && row.totp_secret) {
+      const { verifyTotp } = await import("@/lib/totp");
+      ok = verifyTotp(row.totp_secret, code);
+    }
+  } else if (params.password) {
+    const { error } = await supabaseAnon.auth.signInWithPassword({ email: staff.email, password: params.password });
+    ok = !error;
+  }
+
+  await logAdminAudit({ userId: staff.id, userName: staff.name, action: ok ? "STAFF_REAUTH_OK" : "STAFF_REAUTH_FAILED", entity: "user", entityId: staff.id, metadata: { method: code ? "totp" : "password" } });
+  if (!ok) return { error: code ? "That code isn't right. Use the current code from your authenticator." : "That password isn't right." };
+
+  const { markReauthenticated } = await import("@/lib/reauth");
+  await markReauthenticated(ctx.authUserId, ctx.sessionId);
+  return { success: true };
+}
+
 const LEGACY_ROLE_FOR_PRESET: Record<PresetKey, string> = {
   admin: "ADMIN",
   client_manager: "MANAGER",
@@ -2940,8 +3083,9 @@ export async function inviteStaffUserAction(params: {
   name: string;
   email: string;
   preset: string;
-}): Promise<{ success?: boolean; error?: string; message?: string; userId?: string; retryAfterSeconds?: number }> {
+}): Promise<{ success?: boolean; error?: string; message?: string; userId?: string; retryAfterSeconds?: number; reauthRequired?: boolean }> {
   const staff = await requireStaffUser("staff:write");
+  if (!(await hasRecentReauth())) return REAUTH_ERROR;
   const email = params.email.toLowerCase().trim();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { error: "Enter a valid email address." };
   if (!isPresetKey(params.preset)) return { error: "Pick a role preset." };
@@ -2998,6 +3142,7 @@ export async function resendAccessAction(userId: string): Promise<{ success?: bo
   if (!target) return { error: "User not found" };
   const isStaffTarget = target.role !== "CLIENT";
   if (!can(staff, isStaffTarget ? "staff:write" : "clients:invite")) return { error: "You don't have permission to do that." };
+  if (!isStaffTarget && !(await isInScope(staff, { userId }))) return { error: "You don't have permission to do that." };
 
   const access = await sendAccessEmail({ email: target.email, area: isStaffTarget ? "admin" : "portal", name: target.name, invitedById: staff.id });
   await logAdminAudit({
@@ -3017,13 +3162,16 @@ export async function resendAccessAction(userId: string): Promise<{ success?: bo
 async function requireAccessManager(userId: string) {
   const staff = await requireStaffUser();
   const t = await query<{ role: string }>("SELECT role FROM users WHERE id = $1", [userId]);
-  const needed = t.rows[0]?.role === "CLIENT" ? "clients:write" : "staff:write";
-  return { staff, allowed: Boolean(t.rows[0]) && can(staff, needed) };
+  const isClient = t.rows[0]?.role === "CLIENT";
+  const needed = isClient ? "clients:write" : "staff:write";
+  const allowed = Boolean(t.rows[0]) && can(staff, needed) && (!isClient || (await isInScope(staff, { userId })));
+  return { staff, allowed, isClient };
 }
 
-export async function revokeAccessAction(userId: string): Promise<{ success?: boolean; error?: string; deleted?: boolean }> {
-  const { staff, allowed } = await requireAccessManager(userId);
+export async function revokeAccessAction(userId: string): Promise<{ success?: boolean; error?: string; deleted?: boolean; reauthRequired?: boolean }> {
+  const { staff, allowed, isClient } = await requireAccessManager(userId);
   if (!allowed) return { error: "You don't have permission to do that." };
+  if (!isClient && !(await hasRecentReauth())) return REAUTH_ERROR;
   if (userId === staff.id) return { error: "You can't revoke your own access." };
   const res = await revokeAccess(userId, staff.id);
   await logAdminAudit({ userId: staff.id, userName: staff.name, action: "ACCESS_REVOKED", entity: "user", entityId: userId, metadata: { deletedAuthUser: res.deleted } });
@@ -3031,9 +3179,10 @@ export async function revokeAccessAction(userId: string): Promise<{ success?: bo
   return res.ok ? { success: true, deleted: res.deleted } : { error: res.error };
 }
 
-export async function setAccountActiveAction(userId: string, active: boolean): Promise<{ success?: boolean; error?: string }> {
-  const { staff, allowed } = await requireAccessManager(userId);
+export async function setAccountActiveAction(userId: string, active: boolean): Promise<{ success?: boolean; error?: string; reauthRequired?: boolean }> {
+  const { staff, allowed, isClient } = await requireAccessManager(userId);
   if (!allowed) return { error: "You don't have permission to do that." };
+  if (!isClient && !(await hasRecentReauth())) return REAUTH_ERROR;
   if (userId === staff.id && !active) return { error: "You can't disable your own account." };
   const res = await setAccountActive(userId, active, staff.id);
   await logAdminAudit({ userId: staff.id, userName: staff.name, action: active ? "ACCOUNT_ENABLED" : "ACCOUNT_DISABLED", entity: "user", entityId: userId });
@@ -3042,9 +3191,10 @@ export async function setAccountActiveAction(userId: string, active: boolean): P
 }
 
 /** Clear a staff member's authenticator (admin only, audited). They set it up again on next sign-in. */
-export async function resetTwoStepAction(userId: string): Promise<{ success?: boolean; error?: string }> {
+export async function resetTwoStepAction(userId: string): Promise<{ success?: boolean; error?: string; reauthRequired?: boolean }> {
   const staff = await requireStaffUser("staff:write");
   if (!staff.isOwner) return { error: "Only an owner can reset two-step sign-in." };
+  if (!(await hasRecentReauth())) return REAUTH_ERROR;
   await resetTwoStep(userId, staff.id);
   await logAdminAudit({ userId: staff.id, userName: staff.name, action: "STAFF_TWO_STEP_RESET", entity: "user", entityId: userId });
   revalidatePath("/admin/users");
@@ -3067,16 +3217,18 @@ export async function retryLeadEmailsAction(leadId: string): Promise<{ success?:
  */
 export async function setStaffAccessAction(
   userId: string,
-  params: { preset: string; overrides: string[] }
-): Promise<{ success?: boolean; error?: string; effective?: string[] }> {
+  params: { preset: string; overrides: string[]; scope?: string }
+): Promise<{ success?: boolean; error?: string; effective?: string[]; reauthRequired?: boolean }> {
   const staff = await requireStaffUser("staff:write");
   if (!staff.isOwner) return { error: "Only an owner can change staff permissions." };
+  if (!(await hasRecentReauth())) return REAUTH_ERROR;
   if (!isPresetKey(params.preset)) return { error: "Unknown preset." };
   const preset = params.preset;
   const overrides = preset === "admin" ? [] : sanitizeOverrides(params.overrides);
+  const scope = preset !== "admin" && params.scope === "assigned" ? "assigned" : "all";
 
-  const cur = await query<{ id: string; role: string; staff_role: string | null; staff_preset: string | null; staff_permissions: string[] | null }>(
-    "SELECT id, role, staff_role, staff_preset, staff_permissions FROM users WHERE id = $1",
+  const cur = await query<{ id: string; role: string; staff_role: string | null; staff_preset: string | null; staff_permissions: string[] | null; staff_scope?: string | null }>(
+    "SELECT * FROM users WHERE id = $1",
     [userId]
   );
   const target = cur.rows[0];
@@ -3094,6 +3246,13 @@ export async function setStaffAccessAction(
     "UPDATE users SET staff_preset = $1, staff_permissions = $2, staff_role = $3, updated_at = NOW() WHERE id = $4",
     [preset, overrides, LEGACY_ROLE_FOR_PRESET[preset], userId]
   );
+  if (scope === "assigned" || (target.staff_scope && target.staff_scope !== scope)) {
+    try {
+      await query("UPDATE users SET staff_scope = $1 WHERE id = $2", [scope, userId]);
+    } catch {
+      return { error: "Permissions saved, but assigned-only access needs scripts/migrate-staff-controls.js to be run first." };
+    }
+  }
 
   const effective = effectivePermissions({ preset, overrides, isOwner: preset === "admin" });
   await logAdminAudit({
@@ -3102,8 +3261,8 @@ export async function setStaffAccessAction(
     action: "STAFF_PERMISSIONS_CHANGED",
     entity: "user",
     entityId: userId,
-    before: { preset: beforePreset, overrides: target.staff_permissions || [] },
-    after: { preset, overrides },
+    before: { preset: beforePreset, overrides: target.staff_permissions || [], scope: target.staff_scope || "all" },
+    after: { preset, overrides, scope },
     metadata: { effectiveCount: effective.length }
   });
 
@@ -3117,8 +3276,9 @@ export async function changeStaffRoleAction(userId: string, newPreset: string): 
   return res.error ? { error: res.error } : { success: true };
 }
 
-export async function revokeStaffSessionsAction(userId: string): Promise<{ success?: boolean; error?: string }> {
+export async function revokeStaffSessionsAction(userId: string): Promise<{ success?: boolean; error?: string; reauthRequired?: boolean }> {
   const staff = await requireStaffUser("staff:write");
+  if (!(await hasRecentReauth())) return REAUTH_ERROR;
 
   await query("UPDATE users SET token_version = token_version + 1 WHERE id = $1", [userId]);
 
@@ -4025,6 +4185,7 @@ export async function testPaystackConnectionAction(secretKeyOverride?: string) {
 
 export async function generatePaystackInvoiceLinkAction(invoiceId: string) {
   const staff = await requireStaffUser("invoices:send");
+  await enforceScope(staff, { invoiceId });
 
   const invRes = await query(
     `SELECT inv.*, o.name AS org_name 
@@ -4036,6 +4197,10 @@ export async function generatePaystackInvoiceLinkAction(invoiceId: string) {
 
   if (invRes.rows.length === 0) return { error: "Invoice not found" };
   const inv = invRes.rows[0];
+  if (inv.milestone_id) {
+    const gate = await checkMilestoneBillable(inv.milestone_id);
+    if (!gate.ok) return { error: gate.error };
+  }
 
   const clientUserRes = await query(
     `SELECT u.email, u.name 
@@ -4118,6 +4283,7 @@ export async function createProjectRequestAction(params: {
   leadId?: string;
 }): Promise<{ success?: boolean; error?: string; projectId?: string }> {
   const staff = await requireStaffUser("projects:create");
+  await enforceScope(staff, { orgId: params.orgId });
   const title = (params.title || "").trim();
   const brief = (params.brief || "").trim();
   if (title.length < 3) return { error: "Give the project a name." };
@@ -4166,6 +4332,7 @@ export async function createProjectRequestAction(params: {
 /** Delivery accepts a request: it becomes a PLANNING project, visible in the client portal. */
 export async function acceptProjectRequestAction(projectId: string): Promise<{ success?: boolean; error?: string }> {
   const staff = await requireStaffUser("projects:write");
+  await enforceScope(staff, { projectId });
   const p = await query<{ status: string; title: string; requested_by_id: string | null; org_id: string }>(
     "SELECT status::text AS status, title, requested_by_id, org_id FROM projects WHERE id = $1",
     [projectId]
@@ -4193,6 +4360,7 @@ export async function acceptProjectRequestAction(projectId: string): Promise<{ s
 /** Delivery's private notes on a project (projects:internal). */
 export async function saveDeliveryNotesAction(projectId: string, notes: string): Promise<{ success?: boolean; error?: string }> {
   const staff = await requireStaffUser("projects:internal");
+  await enforceScope(staff, { projectId });
   const text = (notes || "").slice(0, 20000);
   await query("UPDATE projects SET delivery_notes = $1, updated_at = NOW() WHERE id = $2", [text || null, projectId]);
   await logAdminAudit({ userId: staff.id, userName: staff.name, action: "DELIVERY_NOTES_UPDATED", entity: "project", entityId: projectId, metadata: { length: text.length } });
@@ -4203,9 +4371,219 @@ export async function saveDeliveryNotesAction(projectId: string, notes: string):
 /** The client manager's private account notes on an organisation (clients:internal). */
 export async function saveAccountNotesAction(orgId: string, notes: string): Promise<{ success?: boolean; error?: string }> {
   const staff = await requireStaffUser("clients:internal");
+  await enforceScope(staff, { orgId });
   const text = (notes || "").slice(0, 20000);
   await query("UPDATE organizations SET account_notes = $1, updated_at = NOW() WHERE id = $2", [text || null, orgId]);
   await logAdminAudit({ orgId, userId: staff.id, userName: staff.name, action: "ACCOUNT_NOTES_UPDATED", entity: "organization", entityId: orgId, metadata: { length: text.length } });
   revalidatePath(`/admin/clients/${orgId}`);
+  return { success: true };
+}
+
+// ==========================================
+// 17. Approval requests (void / refund for staff without the permission)
+// ==========================================
+/**
+ * Ask an owner to run an action you aren't allowed to (void an invoice, refund).
+ * The owners are notified; approving runs it automatically.
+ */
+export async function requestApprovalAction(params: {
+  action: string;
+  entityId: string;
+  reason: string;
+  amountKes?: number;
+}): Promise<{ success?: boolean; error?: string }> {
+  const staff = await requireStaffUser();
+  const { isApprovalAction, APPROVAL_PERMISSION, APPROVAL_LABEL } = await import("@/lib/approvals");
+  if (!isApprovalAction(params.action)) return { error: "Unknown action." };
+  const action = params.action;
+  const entity = action === "refund_payment" ? "payment" : "invoice";
+  // You need to be able to see the record to ask about it.
+  if (!can(staff, entity === "payment" ? "payments:read" : "invoices:read")) return { error: "You don't have access to this record." };
+  if (can(staff, APPROVAL_PERMISSION[action])) return { error: "You can do this yourself; no approval needed." };
+  await enforceScope(staff, entity === "payment" ? { paymentId: params.entityId } : { invoiceId: params.entityId });
+
+  const reason = (params.reason || "").trim();
+  if (reason.length < 5) return { error: "Add a reason so the approver knows why." };
+  const exists = await query(entity === "payment" ? "SELECT id FROM payments WHERE id = $1" : "SELECT id FROM invoices WHERE id = $1", [params.entityId]);
+  if (!exists.rows[0]) return { error: "Record not found." };
+
+  const payload: Record<string, any> = {};
+  if (action !== "void_invoice") {
+    const amt = Number(params.amountKes);
+    if (!Number.isFinite(amt) || amt <= 0) return { error: "Enter the refund amount." };
+    payload.amountKes = Math.round(amt);
+  }
+
+  let approvalId: string;
+  try {
+    const ins = await query<{ id: string }>(
+      `INSERT INTO approvals (entity, entity_id, action, payload, reason, requested_by_id)
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+      [entity, params.entityId, action, JSON.stringify(payload), reason, staff.id]
+    );
+    approvalId = ins.rows[0].id;
+  } catch (err: any) {
+    if (String(err?.code) === "23505") return { error: "There's already an open request for this. An owner will review it." };
+    throw err;
+  }
+
+  await logAdminAudit({
+    userId: staff.id,
+    userName: staff.name,
+    action: "APPROVAL_REQUESTED",
+    entity,
+    entityId: params.entityId,
+    metadata: { approvalId, action, reason, ...payload }
+  });
+  await notifyOwners(
+    {
+      type: "PAYMENT",
+      title: `Approval needed: ${APPROVAL_LABEL[action]}`,
+      description: `${staff.name} asks you to ${APPROVAL_LABEL[action].toLowerCase()}${payload.amountKes ? ` (KES ${payload.amountKes.toLocaleString()})` : ""}: "${reason.slice(0, 160)}". Approve or deny from the Overview.`,
+      targetHref: adminPath("/")
+    },
+    { excludeUserId: staff.id, email: true }
+  );
+
+  revalidatePath("/admin");
+  revalidatePath(entity === "payment" ? "/admin/payments" : `/admin/invoices/${params.entityId}`);
+  return { success: true };
+}
+
+/** Owner decision. Approve runs the action as the approver; deny just closes it. Both tell the requester. */
+export async function decideApprovalAction(
+  approvalId: string,
+  decision: "APPROVE" | "DENY",
+  note?: string
+): Promise<{ success?: boolean; error?: string; result?: string }> {
+  const staff = await requireStaffUser();
+  const { isApprovalAction, APPROVAL_PERMISSION, APPROVAL_LABEL } = await import("@/lib/approvals");
+
+  const res = await query<{ id: string; entity: string; entity_id: string; action: string; payload: any; reason: string | null; requested_by_id: string | null; status: string }>(
+    "SELECT id, entity, entity_id, action, payload, reason, requested_by_id, status FROM approvals WHERE id = $1",
+    [approvalId]
+  );
+  const a = res.rows[0];
+  if (!a || !isApprovalAction(a.action)) return { error: "Request not found." };
+  if (!can(staff, APPROVAL_PERMISSION[a.action])) return { error: "Only someone who can do this themselves can approve it." };
+  if (a.requested_by_id === staff.id) return { error: "You can't approve your own request." };
+
+  // Claim it atomically so two approvers can't both run it.
+  const claimed = await query(
+    "UPDATE approvals SET status = $1, decided_by_id = $2, decided_at = NOW(), decision_note = $3 WHERE id = $4 AND status = 'PENDING' RETURNING id",
+    [decision === "APPROVE" ? "APPROVED" : "DENIED", staff.id, (note || "").slice(0, 1000) || null, approvalId]
+  );
+  if (!claimed.rows[0]) return { error: "This request was already decided." };
+
+  let outcome = "Denied";
+  if (decision === "APPROVE") {
+    const reason = `${a.reason || "Approved request"} (approved by ${staff.name})`;
+    const amount = Number(a.payload?.amountKes) || 0;
+    let result: { success?: boolean; error?: string } | undefined;
+    try {
+      if (a.action === "void_invoice") result = await executeVoidInvoice(staff, a.entity_id, reason, approvalId);
+      else if (a.action === "refund_invoice") result = await executeRefundInvoice(staff, a.entity_id, amount, reason, approvalId);
+      else result = await executeRefundPayment(staff, { paymentId: a.entity_id, amountKes: amount, reason }, approvalId);
+    } catch (err: any) {
+      result = { error: err?.message || "The action failed." };
+    }
+    if (result?.error) {
+      await query("UPDATE approvals SET status = 'FAILED', result = $1 WHERE id = $2", [result.error, approvalId]);
+      outcome = `Approved, but it failed: ${result.error}`;
+    } else {
+      await query("UPDATE approvals SET result = 'done' WHERE id = $1", [approvalId]);
+      outcome = "Approved and done";
+    }
+  }
+
+  await logAdminAudit({
+    userId: staff.id,
+    userName: staff.name,
+    action: decision === "APPROVE" ? "APPROVAL_APPROVED" : "APPROVAL_DENIED",
+    entity: a.entity,
+    entityId: a.entity_id,
+    metadata: { approvalId, action: a.action, requestedById: a.requested_by_id, outcome, note: note || null }
+  });
+
+  if (a.requested_by_id) {
+    const org = await query<{ id: string }>("SELECT id FROM organizations LIMIT 1");
+    if (org.rows[0]) {
+      await notifyUser(a.requested_by_id, org.rows[0].id, {
+        type: "PAYMENT",
+        title: `${APPROVAL_LABEL[a.action]}: ${outcome.toLowerCase()}`,
+        description: `${staff.name} ${decision === "APPROVE" ? "approved" : "denied"} your request${note ? `: "${note.slice(0, 160)}"` : "."}`,
+        targetHref: adminPath(a.entity === "payment" ? "/payments" : `/invoices/${a.entity_id}`)
+      });
+    }
+  }
+
+  revalidatePath("/admin");
+  revalidatePath("/admin/payments");
+  revalidatePath(`/admin/invoices/${a.entity_id}`);
+  return outcome.startsWith("Approved, but") ? { error: outcome } : { success: true, result: outcome };
+}
+
+// ==========================================
+// 18. Billing gated on delivery
+// ==========================================
+/** Delivery releases a milestone for billing before the client signs it off (or takes it back). */
+export async function setMilestoneReadyToBillAction(milestoneId: string, ready: boolean): Promise<{ success?: boolean; error?: string }> {
+  const staff = await requireStaffUser("milestones:write");
+  await enforceScope(staff, { milestoneId });
+  const r = await query<{ title: string; project_id: string }>(
+    "UPDATE milestones SET ready_to_bill = $1, ready_to_bill_by_id = $2 WHERE id = $3 RETURNING title, project_id",
+    [ready, ready ? staff.id : null, milestoneId]
+  );
+  if (!r.rows[0]) return { error: "Milestone not found." };
+  await logAdminAudit({
+    userId: staff.id,
+    userName: staff.name,
+    action: ready ? "MILESTONE_READY_TO_BILL" : "MILESTONE_BILLING_HELD",
+    entity: "milestone",
+    entityId: milestoneId,
+    metadata: { title: r.rows[0].title, projectId: r.rows[0].project_id }
+  });
+  revalidatePath(`/admin/projects/${r.rows[0].project_id}`);
+  revalidatePath("/admin/invoices");
+  return { success: true };
+}
+
+// ==========================================
+// 19. Assignments (drive assigned-only access)
+// ==========================================
+/**
+ * Set a client's account manager or a project's delivery lead. Owner only, since it
+ * decides what assigned-only staff can see. Pass null to clear.
+ */
+export async function setAssignmentAction(params: {
+  kind: "account_manager" | "delivery_lead";
+  targetId: string;
+  userId: string | null;
+}): Promise<{ success?: boolean; error?: string }> {
+  const staff = await requireStaffUser("staff:write");
+  if (!staff.isOwner) return { error: "Only an owner can change assignments." };
+  if (params.userId) {
+    const u = await query("SELECT id FROM users WHERE id = $1 AND role IN ('ADMIN','STAFF') AND COALESCE(active, true) = true", [params.userId]);
+    if (!u.rows[0]) return { error: "Pick an active staff member." };
+  }
+  const isOrg = params.kind === "account_manager";
+  try {
+    const r = await query(
+      isOrg ? "UPDATE organizations SET account_manager_id = $1 WHERE id = $2 RETURNING id" : "UPDATE projects SET delivery_lead_id = $1 WHERE id = $2 RETURNING id",
+      [params.userId, params.targetId]
+    );
+    if (!r.rows[0]) return { error: "Not found." };
+  } catch {
+    return { error: "Assignments need scripts/migrate-staff-permissions.js to be run first." };
+  }
+  await logAdminAudit({
+    userId: staff.id,
+    userName: staff.name,
+    action: isOrg ? "ACCOUNT_MANAGER_SET" : "DELIVERY_LEAD_SET",
+    entity: isOrg ? "organization" : "project",
+    entityId: params.targetId,
+    metadata: { assigneeId: params.userId }
+  });
+  revalidatePath(isOrg ? `/admin/clients/${params.targetId}` : `/admin/projects/${params.targetId}`);
   return { success: true };
 }

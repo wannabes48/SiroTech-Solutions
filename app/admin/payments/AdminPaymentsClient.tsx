@@ -6,7 +6,7 @@ import { adminPath } from "@/lib/hosts";
 import React, { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { refundPaystackPaymentAction } from "@/app/admin/actions";
+import { refundPaystackPaymentAction, requestApprovalAction } from "@/app/admin/actions";
 import {
   CreditCard,
   CheckCircle2,
@@ -32,11 +32,14 @@ import {
 export function AdminPaymentsClient({
   initialPayments,
   pendingInvoices,
-  currentStaff
+  currentStaff,
+  pendingRefundIds = []
 }: {
   initialPayments: any[];
   pendingInvoices: any[];
   currentStaff?: any;
+  /** Payments with an open refund approval request. */
+  pendingRefundIds?: string[];
 }) {
   const router = useRouter();
   const [payments, setPayments] = useState(initialPayments);
@@ -124,6 +127,21 @@ export function AdminPaymentsClient({
 
     startTransition(async () => {
       setRefundError(null);
+      if (!canRefund) {
+        // No refund permission: ask an owner; approval runs the refund automatically.
+        const req = await requestApprovalAction({
+          action: "refund_payment",
+          entityId: refundingPayment.id,
+          reason: refundReason.trim(),
+          amountKes: Number(refundingPayment.amount_kes)
+        });
+        if (req.error) return setRefundError(req.error);
+        showToast("Refund approval requested. You'll be notified when an owner decides.");
+        setRefundingPayment(null);
+        setRefundReason("");
+        router.refresh();
+        return;
+      }
       const res = await refundPaystackPaymentAction({
         paymentId: refundingPayment.id,
         amountKes: Number(refundingPayment.amount_kes),
@@ -465,7 +483,11 @@ export function AdminPaymentsClient({
                         <td className="py-4 px-6 text-right">
                           {!isRefunded && (
                             <div className="inline-flex items-center gap-1">
-                              {canRefund ? (
+                              {pendingRefundIds.includes(p.id) ? (
+                                <span className="px-2.5 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-900 text-[10px] font-semibold">
+                                  Refund requested
+                                </span>
+                              ) : (
                                 <button
                                   type="button"
                                   onClick={() => {
@@ -474,19 +496,11 @@ export function AdminPaymentsClient({
                                     setRefundError(null);
                                   }}
                                   className="px-2.5 py-1 rounded-full border border-red-200 text-red-700 hover:bg-red-50 text-[11px] font-semibold inline-flex items-center gap-1 cursor-pointer transition-colors"
-                                  title="Refund settlement (Admin & Finance Only)"
+                                  title={canRefund ? "Refund this payment" : "Ask an owner to approve a refund"}
                                 >
                                   <RotateCcw className="w-3 h-3 text-red-600" />
-                                  <span>Refund</span>
+                                  <span>{canRefund ? "Refund" : "Request refund"}</span>
                                 </button>
-                              ) : (
-                                <span
-                                  className="px-2.5 py-1 rounded-full bg-surface border border-rule text-muted text-[10px] inline-flex items-center gap-1 cursor-not-allowed"
-                                  title="Refund restricted to Admin and Finance roles only"
-                                >
-                                  <Lock className="w-3 h-3" />
-                                  <span>Refund Locked</span>
-                                </span>
                               )}
                             </div>
                           )}
@@ -545,7 +559,7 @@ export function AdminPaymentsClient({
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 text-red-700 font-bold text-base">
                 <ShieldAlert className="w-5 h-5 text-red-600" />
-                <span>Confirm Paystack / Gateway Refund</span>
+                <span>{canRefund ? "Confirm Paystack / Gateway Refund" : "Request refund approval"}</span>
               </div>
               <button
                 type="button"
@@ -624,7 +638,7 @@ export function AdminPaymentsClient({
                   className="px-5 py-2 rounded-full font-bold bg-red-600 hover:bg-red-700 text-white cursor-pointer shadow-xs inline-flex items-center gap-1.5"
                 >
                   <RotateCcw className="w-3.5 h-3.5" />
-                  <span>Execute Refund</span>
+                  <span>{canRefund ? "Execute Refund" : "Send request"}</span>
                 </button>
               </div>
             </form>

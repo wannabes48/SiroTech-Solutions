@@ -13,6 +13,7 @@ import {
 import { ACCESS_STATUS_LABEL, type AccessStatus } from "@/lib/access-status";
 import { ASSIGNABLE_PRESETS, PRESETS, type PresetKey } from "@/lib/admin-permissions-client";
 import { StaffPermissionEditor } from "./StaffPermissionEditor";
+import { useReauth } from "@/components/admin/ReauthDialog";
 
 interface StaffUser {
   id: string;
@@ -21,6 +22,7 @@ interface StaffUser {
   role: string;
   preset: PresetKey;
   overrides: string[];
+  scope: "all" | "assigned";
   totp_enabled: boolean;
   last_login_at?: string | null;
   invited_at?: string | null;
@@ -51,10 +53,13 @@ export function AdminUsersClient({
   initialStaff,
   currentUserId,
   isAdmin,
+  hasAuthenticator = false,
 }: {
   initialStaff: StaffUser[];
   currentUserId: string;
   isAdmin: boolean;
+  /** Whether the signed-in owner can confirm changes with an authenticator code (else password). */
+  hasAuthenticator?: boolean;
 }) {
   const router = useRouter();
   const [staffList, setStaffList] = useState<StaffUser[]>(initialStaff);
@@ -63,6 +68,7 @@ export function AdminUsersClient({
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<PresetKey>("client_manager");
   const [editing, setEditing] = useState<StaffUser | null>(null);
+  const reauth = useReauth(hasAuthenticator);
   const [inviteResult, setInviteResult] = useState<{ ok: boolean; text: string } | null>(null);
   const [toast, setToast] = useState<{ ok: boolean; text: string } | null>(null);
   const [cooldowns, setCooldowns] = useState<Record<string, number>>({});
@@ -91,7 +97,7 @@ export function AdminUsersClient({
     setInviteResult(null);
 
     startTransition(async () => {
-      const res = await inviteStaffUserAction({ name, email, preset: role });
+      const res = await reauth.call(() => inviteStaffUserAction({ name, email, preset: role }));
       if (res.userId) {
         setCooldowns((c) => ({ ...c, [res.userId!]: res.retryAfterSeconds || 60 }));
         router.refresh();
@@ -109,7 +115,7 @@ export function AdminUsersClient({
 
   const run = (fn: () => Promise<{ success?: boolean; error?: string; message?: string; retryAfterSeconds?: number }>, okText: string, userId?: string) =>
     startTransition(async () => {
-      const res = await fn();
+      const res = await reauth.call(fn);
       if (res.error) {
         if (userId && res.retryAfterSeconds) setCooldowns((c) => ({ ...c, [userId]: res.retryAfterSeconds! }));
         showToast(false, res.error);
@@ -184,6 +190,7 @@ export function AdminUsersClient({
                         <span className={`px-2.5 py-1 rounded-full text-[11px] font-bold border ${roleBadges[u.preset] || roleBadges.support}`}>
                           {PRESETS[u.preset]?.label || u.preset}
                         </span>
+                        {u.scope === "assigned" && <span className="text-[10px] font-semibold text-amber-800">Assigned clients only</span>}
                         {u.overrides?.length > 0 && (
                           <span className="text-[10px] text-muted">{u.overrides.length} override{u.overrides.length > 1 ? "s" : ""}</span>
                         )}
@@ -301,7 +308,8 @@ export function AdminUsersClient({
         </div>
       </div>
 
-      {editing && <StaffPermissionEditor user={editing} onClose={() => setEditing(null)} />}
+      {editing && <StaffPermissionEditor user={editing} onClose={() => setEditing(null)} runWithReauth={reauth.call} />}
+      {reauth.dialog}
 
       {/* Invite dialog */}
       {inviteModalOpen && (

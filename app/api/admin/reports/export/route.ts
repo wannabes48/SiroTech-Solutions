@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireStaffUser, can, recordExport } from "@/lib/admin-permissions";
 import { unstable_rethrow } from "next/navigation";
+import { requireFullScope } from "@/lib/admin-scope";
 import { query } from "@/lib/db";
 
 function escapeCsv(val: any): string {
@@ -41,6 +42,7 @@ const REPORT_PERMISSION: Record<string, string> = {
 export async function GET(request: NextRequest) {
   try {
     const staff = await requireStaffUser("reports:read");
+    requireFullScope(staff);
     const { searchParams } = new URL(request.url);
     const type = searchParams.get("type") || "revenue";
     const range = searchParams.get("range") || "all";

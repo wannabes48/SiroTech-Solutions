@@ -14,7 +14,8 @@ import {
   updateProjectDetailsAction,
   deleteProjectAction,
   acceptProjectRequestAction,
-  saveDeliveryNotesAction
+  saveDeliveryNotesAction,
+  setMilestoneReadyToBillAction
 } from "@/app/admin/actions";
 import {
   FolderGit2,
@@ -157,6 +158,14 @@ export function ProjectHubStaffClient({
     { id: "proposals", label: `Proposals (${project.proposals?.length || 0})` },
     { id: "invoices", label: `Invoices (${project.invoices?.length || 0})` }
   ] as const;
+
+  const handleReadyToBill = (milestoneId: string, ready: boolean) => {
+    startTransition(async () => {
+      const res = await setMilestoneReadyToBillAction(milestoneId, ready);
+      if (res?.error) alert(res.error);
+      router.refresh();
+    });
+  };
 
   const handleAddMilestone = (e: React.FormEvent) => {
     e.preventDefault();
@@ -504,7 +513,25 @@ export function ProjectHubStaffClient({
                       {m.description && <p className="text-xs text-body leading-relaxed">{m.description}</p>}
                     </div>
 
+                    {!perms.milestonesWrite && (m.ready_to_bill || isApproved) && (
+                      <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-900 border border-emerald-200 shrink-0">
+                        Billable
+                      </span>
+                    )}
                     <div className={`flex items-center gap-2 shrink-0 flex-wrap ${perms.milestonesWrite ? "" : "hidden"}`}>
+                      {!isApproved && (
+                        <button
+                          type="button"
+                          disabled={isPending}
+                          onClick={() => handleReadyToBill(m.id, !m.ready_to_bill)}
+                          title={m.ready_to_bill ? "Billing released before client approval. Click to hold billing." : "Let the client manager invoice this milestone before the client approves it"}
+                          className={`px-3 py-1.5 rounded-full text-[11px] font-bold border transition-colors cursor-pointer ${
+                            m.ready_to_bill ? "bg-emerald-50 text-emerald-900 border-emerald-300" : "bg-white text-muted border-rule hover:text-ink"
+                          }`}
+                        >
+                          {m.ready_to_bill ? "✓ Ready to bill" : "Mark ready to bill"}
+                        </button>
+                      )}
                       {isChangesRequested && (
                         <>
                           <button

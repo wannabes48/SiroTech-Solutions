@@ -2,13 +2,15 @@ import { adminPath } from "@/lib/hosts";
 import React from "react";
 import Link from "next/link";
 import { requireStaffUser } from "@/lib/admin-permissions";
+import { getScopeSet, filterByScope, enforceScope } from "@/lib/admin-scope";
+
 import { getAdminClients } from "@/lib/admin-db";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { Building2, Users, FolderGit2, ArrowRight, DollarSign } from "lucide-react";
 
 export default async function AdminClientsPage() {
-  await requireStaffUser("clients:read");
-  const clients = await getAdminClients();
+  const staff = await requireStaffUser("clients:read");
+  const clients = filterByScope(await getAdminClients(), await getScopeSet(staff), { org: "id" });
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300">

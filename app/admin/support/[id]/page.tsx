@@ -4,6 +4,8 @@ import { notFound } from "next/navigation";
 import { requireStaffUser, can } from "@/lib/admin-permissions";
 import { query } from "@/lib/db";
 import { TicketAssignControl } from "@/components/admin/TicketAssignControl";
+import { getScopeSet, filterByScope, enforceScope } from "@/lib/admin-scope";
+
 import { getAdminTicketById } from "@/lib/admin-db";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { TicketDetailStaffClient } from "./TicketDetailStaffClient";
@@ -15,6 +17,7 @@ export default async function AdminTicketDetailPage({
 }) {
   const staff = await requireStaffUser("tickets:read");
   const { id } = await params;
+  await enforceScope(staff, { ticketId: id });
   const ticket = await getAdminTicketById(id);
 
   if (!ticket) {

@@ -566,7 +566,7 @@ export async function getAdminInvoiceById(id: string) {
 export async function getAdminPayments() {
   try {
     const res = await query(`
-      SELECT pay.*, inv.invoice_number, COALESCE(o.name, pay_org.name, 'Direct Client') AS org_name
+      SELECT pay.*, inv.invoice_number, inv.org_id AS invoice_org_id, inv.project_id AS invoice_project_id, COALESCE(o.name, pay_org.name, 'Direct Client') AS org_name
       FROM payments pay
       LEFT JOIN invoices inv ON inv.id = pay.invoice_id
       LEFT JOIN organizations o ON o.id = inv.org_id
@@ -1138,9 +1138,11 @@ export async function getAdminAssistantData() {
 export async function getAdminStaffUsers() {
   try {
     // staff_preset / staff_permissions arrive with scripts/migrate-staff-permissions.js
-    const hasPresetCols = await query(
-      `SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'staff_preset' LIMIT 1`
-    ).then((r) => r.rows.length > 0).catch(() => false);
+    const cols = await query<{ column_name: string }>(
+      `SELECT column_name FROM information_schema.columns WHERE table_name = 'users' AND column_name IN ('staff_preset', 'staff_scope')`
+    ).then((r) => new Set(r.rows.map((x) => x.column_name))).catch(() => new Set<string>());
+    const hasPresetCols = cols.has("staff_preset");
+    const scopeCol = cols.has("staff_scope") ? "u.staff_scope," : "'all'::text AS staff_scope,";
     const res = await query(`
       SELECT 
         u.id, 
@@ -1149,6 +1151,7 @@ export async function getAdminStaffUsers() {
         u.role, 
         u.staff_role, 
         ${hasPresetCols ? "u.staff_preset, u.staff_permissions," : "NULL::text AS staff_preset, NULL::text[] AS staff_permissions,"}
+        ${scopeCol}
         u.totp_enabled,
         COALESCE(u.last_login_at, (SELECT MAX(last_active) FROM staff_sessions WHERE user_id = u.id)) AS last_login_at,
         u.created_at, u.active, u.accepted_at, u.invited_at, u.last_access_email_at

@@ -1,11 +1,13 @@
 import React from "react";
 import { requireStaffUser } from "@/lib/admin-permissions";
+import { getScopeSet, filterByScope, enforceScope } from "@/lib/admin-scope";
+
 import { query } from "@/lib/db";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { AdminMessagesClient } from "./AdminMessagesClient";
 
 export default async function AdminMessagesPage() {
-  await requireStaffUser("messages:read");
+  const staff = await requireStaffUser("messages:read");
 
   let messages: any[] = [];
   let projects: any[] = [];
@@ -42,8 +44,9 @@ export default async function AdminMessagesPage() {
       `)
     ]);
 
-    messages = msgRes.rows;
-    projects = projRes.rows;
+    const scope = await getScopeSet(staff);
+    messages = filterByScope(msgRes.rows, scope, { project: "project_id" });
+    projects = filterByScope(projRes.rows, scope, { project: "id" });
   } catch (err) {
     console.error("Messages query error:", err);
   }

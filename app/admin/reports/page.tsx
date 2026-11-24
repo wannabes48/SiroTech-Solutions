@@ -1,11 +1,13 @@
 import React from "react";
 import { requireStaffUser } from "@/lib/admin-permissions";
+import { requireFullScope } from "@/lib/admin-scope";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { ReportsExportClient } from "./ReportsExportClient";
 import { getAdminReportStats } from "@/lib/admin-db";
 
 export default async function AdminReportsPage() {
-  await requireStaffUser("reports:read");
+  const staff = await requireStaffUser("reports:read");
+  requireFullScope(staff); // business-wide totals
 
   const stats = await getAdminReportStats();
 

@@ -8,7 +8,12 @@ export default async function AdminUsersPage() {
   const me = await requireStaffUser("staff:read");
   const staffUsers = (await getAdminStaffUsers()).map((u: any) => {
     const preset = resolvePreset(u, u.role);
-    return { ...u, preset, overrides: preset === "admin" ? [] : sanitizeOverrides(u.staff_permissions || []) };
+    return {
+      ...u,
+      preset,
+      overrides: preset === "admin" ? [] : sanitizeOverrides(u.staff_permissions || []),
+      scope: preset !== "admin" && u.staff_scope === "assigned" ? "assigned" : "all"
+    };
   });
 
   return (
@@ -23,6 +28,7 @@ export default async function AdminUsersPage() {
         initialStaff={JSON.parse(JSON.stringify(staffUsers))}
         currentUserId={me.id}
         isAdmin={me.isOwner}
+        hasAuthenticator={me.totpEnabled}
       />
     </div>
   );

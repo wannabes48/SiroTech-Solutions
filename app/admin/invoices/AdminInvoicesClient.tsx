@@ -21,11 +21,14 @@ import {
 
 export function AdminInvoicesClient({
   initialInvoices,
-  organizations
+  organizations,
+  milestones = []
 }: {
   initialInvoices: any[];
   organizations: any[];
+  milestones?: { id: string; title: string; status: string; ready_to_bill: boolean; project_title: string; org_id: string }[];
 }) {
+  const [milestoneId, setMilestoneId] = useState("");
   const router = useRouter();
   const [invoices, setInvoices] = useState(initialInvoices);
   const [searchTerm, setSearchTerm] = useState("");
@@ -89,7 +92,8 @@ export function AdminInvoicesClient({
           lineItems,
           currency,
           dueDate,
-          discountKes: Number(discountKes)
+          discountKes: Number(discountKes),
+          milestoneId: milestoneId || undefined
         });
 
         if (res?.success && res.invoiceId) {
@@ -275,7 +279,10 @@ export function AdminInvoicesClient({
                   <select
                     required
                     value={selectedOrgId}
-                    onChange={(e) => setSelectedOrgId(e.target.value)}
+                    onChange={(e) => {
+                      setSelectedOrgId(e.target.value);
+                      setMilestoneId("");
+                    }}
                     className="w-full px-3 py-2 rounded-xl bg-surface border border-rule"
                   >
                     {organizations.map((org) => (
@@ -285,6 +292,30 @@ export function AdminInvoicesClient({
                     ))}
                   </select>
                 </div>
+
+                {milestones.some((m) => m.org_id === selectedOrgId) && (
+                  <div className="sm:col-span-3">
+                    <label className="font-semibold text-ink block mb-1">Bill a milestone (optional)</label>
+                    <select
+                      value={milestoneId}
+                      onChange={(e) => setMilestoneId(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl bg-surface border border-rule"
+                    >
+                      <option value="">Not linked to a milestone</option>
+                      {milestones
+                        .filter((m) => m.org_id === selectedOrgId)
+                        .map((m) => {
+                          const billable = m.status === "APPROVED" || m.ready_to_bill;
+                          return (
+                            <option key={m.id} value={m.id} disabled={!billable}>
+                              {m.project_title}: {m.title} {billable ? (m.status === "APPROVED" ? "(approved)" : "(ready to bill)") : "(waiting for approval)"}
+                            </option>
+                          );
+                        })}
+                    </select>
+                    <p className="text-muted mt-1">Milestones can be billed once the client approves them or delivery marks them Ready to bill.</p>
+                  </div>
+                )}
 
                 <div>
                   <label className="font-semibold text-ink block mb-1">Due Date</label>

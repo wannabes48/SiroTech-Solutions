@@ -1,7 +1,10 @@
 import { adminPath } from "@/lib/hosts";
 import React from "react";
 import { notFound } from "next/navigation";
-import { requireStaffUser } from "@/lib/admin-permissions";
+import { requireStaffUser, can } from "@/lib/admin-permissions";
+import { getPendingApprovalsFor } from "@/lib/approvals";
+import { getScopeSet, filterByScope, enforceScope } from "@/lib/admin-scope";
+
 import { getAdminInvoiceById } from "@/lib/admin-db";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { InvoiceDetailStaffClient } from "./InvoiceDetailStaffClient";
@@ -11,8 +14,9 @@ export default async function AdminInvoiceDetailPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  await requireStaffUser("invoices:read");
+  const staff = await requireStaffUser("invoices:read");
   const { id } = await params;
+  await enforceScope(staff, { invoiceId: id });
   const invoice = await getAdminInvoiceById(id);
 
   if (!invoice) {
@@ -31,7 +35,16 @@ export default async function AdminInvoiceDetailPage({
         ]}
       />
 
-      <InvoiceDetailStaffClient invoice={invoice} />
+      <InvoiceDetailStaffClient
+        invoice={invoice}
+        perms={{
+          void: can(staff, "invoices:void"),
+          refund: can(staff, "payments:refund"),
+          markPaid: can(staff, "invoices:markpaid"),
+          send: can(staff, "invoices:send")
+        }}
+        pendingApprovals={JSON.parse(JSON.stringify(await getPendingApprovalsFor("invoice", [invoice.id])))}
+      />
     </div>
   );
 }

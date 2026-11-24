@@ -22,7 +22,11 @@ export interface StaffSessionUser extends SessionUser {
   /** Owners (admin preset) can do everything; only they can manage staff, refund or void. */
   isOwner: boolean;
   totpEnabled: boolean;
+  /** "assigned": only clients they account-manage and projects they lead. Owners are always "all". */
+  scope: StaffScope;
 }
+
+export type StaffScope = "all" | "assigned";
 
 /** The fields can() needs; safe to send to the browser. */
 export type PermissionSubject = Pick<StaffSessionUser, "preset" | "overrides" | "isOwner">;

@@ -79,7 +79,7 @@ export async function GET() {
     const operationalNotifs: any[] = [];
 
     // Tickets
-    (can(staff, "tickets:read") ? ticketsRes.rows : []).forEach((t: any) => {
+    (staff.scope === "all" && can(staff, "tickets:read") ? ticketsRes.rows : []).forEach((t: any) => {
       const itemId = `ticket-${t.id}`;
       operationalNotifs.push({
         id: itemId,
@@ -94,7 +94,7 @@ export async function GET() {
     });
 
     // Consultations
-    (can(staff, "consultations:read") ? consultsRes.rows : []).forEach((c: any) => {
+    (staff.scope === "all" && can(staff, "consultations:read") ? consultsRes.rows : []).forEach((c: any) => {
       const itemId = `consult-${c.id}`;
       const dateStr = c.scheduled_at
         ? new Date(c.scheduled_at).toLocaleDateString("en-US", {
@@ -117,7 +117,7 @@ export async function GET() {
     });
 
     // Payments
-    (can(staff, "payments:read") ? paymentsRes.rows : []).forEach((p: any) => {
+    (staff.scope === "all" && can(staff, "payments:read") ? paymentsRes.rows : []).forEach((p: any) => {
       const itemId = `pay-${p.id}`;
       const amountStr = Number(p.amount_kes || 0).toLocaleString();
       operationalNotifs.push({
@@ -133,7 +133,7 @@ export async function GET() {
     });
 
     // Leads
-    (can(staff, "leads:read") ? leadsRes.rows : []).forEach((l: any) => {
+    (staff.scope === "all" && can(staff, "leads:read") ? leadsRes.rows : []).forEach((l: any) => {
       const itemId = `lead-${l.id}`;
       const val = Number(l.value || 0);
       const valStr = val > 0 ? ` • Est. KES ${val.toLocaleString()}` : "";
@@ -150,7 +150,7 @@ export async function GET() {
     });
 
     // Milestones
-    (can(staff, "projects:read") ? milestonesRes.rows : []).forEach((m: any) => {
+    (staff.scope === "all" && can(staff, "projects:read") ? milestonesRes.rows : []).forEach((m: any) => {
       const itemId = `milestone-${m.id}`;
       operationalNotifs.push({
         id: itemId,

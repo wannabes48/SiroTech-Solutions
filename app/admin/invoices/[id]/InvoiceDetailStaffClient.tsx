@@ -8,6 +8,7 @@ import {
   voidInvoiceAction,
   refundInvoiceAction,
   generatePaystackInvoiceLinkAction,
+  requestApprovalAction,
 } from "@/app/admin/actions";
 import {
   Receipt,
@@ -26,8 +27,30 @@ import {
   X,
 } from "lucide-react";
 
-export function InvoiceDetailStaffClient({ invoice }: { invoice: any }) {
+export interface InvoicePerms {
+  void: boolean;
+  refund: boolean;
+  markPaid: boolean;
+  send: boolean;
+}
+
+const ALL_INVOICE_PERMS: InvoicePerms = { void: true, refund: true, markPaid: true, send: true };
+
+export function InvoiceDetailStaffClient({
+  invoice,
+  perms = ALL_INVOICE_PERMS,
+  pendingApprovals = []
+}: {
+  invoice: any;
+  /** Without void/refund the buttons become "Request approval". The server checks either way. */
+  perms?: InvoicePerms;
+  pendingApprovals?: { action: string; requested_by_name: string | null; created_at: string }[];
+}) {
   const router = useRouter();
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const pendingVoid = pendingApprovals.find((a) => a.action === "void_invoice");
+  const pendingRefund = pendingApprovals.find((a) => a.action === "refund_invoice");
   const [modalMode, setModalMode] = useState<"PAYMENT" | "VOID" | "REFUND" | null>(null);
 
   // Form states
@@ -77,30 +100,55 @@ export function InvoiceDetailStaffClient({ invoice }: { invoice: any }) {
     });
   };
 
+  const finish = (res: any, okNotice?: string) => {
+    if (res?.error) {
+      setActionError(res.error);
+      return;
+    }
+    setActionError(null);
+    setModalMode(null);
+    if (okNotice) setNotice(okNotice);
+    router.refresh();
+  };
+
   const handleVoid = (e: React.FormEvent) => {
     e.preventDefault();
     startTransition(async () => {
-      const res = await voidInvoiceAction(invoice.id, voidReason);
-      if (res?.success) {
-        setModalMode(null);
-        router.refresh();
-      }
+      if (perms.void) finish(await voidInvoiceAction(invoice.id, voidReason));
+      else
+        finish(
+          await requestApprovalAction({ action: "void_invoice", entityId: invoice.id, reason: voidReason }),
+          "Approval requested. You'll be notified when an owner decides."
+        );
     });
   };
 
   const handleRefund = (e: React.FormEvent) => {
     e.preventDefault();
     startTransition(async () => {
-      const res = await refundInvoiceAction(invoice.id, Number(refundAmount), refundReason);
-      if (res?.success) {
-        setModalMode(null);
-        router.refresh();
-      }
+      if (perms.refund) finish(await refundInvoiceAction(invoice.id, Number(refundAmount), refundReason));
+      else
+        finish(
+          await requestApprovalAction({ action: "refund_invoice", entityId: invoice.id, reason: refundReason, amountKes: Number(refundAmount) }),
+          "Refund approval requested. You'll be notified when an owner decides."
+        );
     });
   };
 
   return (
     <div className="space-y-8">
+      {(notice || pendingApprovals.length > 0) && (
+        <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 text-xs text-amber-900 space-y-1">
+          {notice && <p className="font-semibold">{notice}</p>}
+          {pendingApprovals.map((a) => (
+            <p key={a.action}>
+              {a.action === "void_invoice" ? "Void" : "Refund"} approval requested
+              {a.requested_by_name ? ` by ${a.requested_by_name}` : ""} on {new Date(a.created_at).toLocaleDateString()} and waiting for an owner.
+            </p>
+          ))}
+        </div>
+      )}
+
       {/* Action Toolbar */}
       <div className="p-5 rounded-3xl bg-white border border-rule/80 shadow-xs flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-3">
@@ -115,6 +163,7 @@ export function InvoiceDetailStaffClient({ invoice }: { invoice: any }) {
             <>
               <button
                 type="button"
+                hidden={!perms.send}
                 onClick={handleGeneratePaystackLink}
                 disabled={isGeneratingLink}
                 className="px-4 py-2 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-900 border border-emerald-200 hover:bg-emerald-100 transition-colors cursor-pointer inline-flex items-center gap-1.5 shadow-2xs"
@@ -125,6 +174,7 @@ export function InvoiceDetailStaffClient({ invoice }: { invoice: any }) {
 
               <button
                 type="button"
+                hidden={!perms.markPaid}
                 onClick={() => setModalMode("PAYMENT")}
                 className="px-4 py-2 rounded-full text-xs font-bold bg-[#1B2E24] hover:bg-black text-white transition-colors cursor-pointer inline-flex items-center gap-1.5 shadow-xs"
               >
@@ -137,22 +187,24 @@ export function InvoiceDetailStaffClient({ invoice }: { invoice: any }) {
           {invoice.status === "PAID" && (
             <button
               type="button"
-              onClick={() => setModalMode("REFUND")}
+              disabled={Boolean(pendingRefund)}
+              onClick={() => { setActionError(null); setModalMode("REFUND"); }}
               className="px-4 py-2 rounded-full text-xs font-semibold bg-white border border-rule hover:bg-surface text-ink transition-colors cursor-pointer inline-flex items-center gap-1.5"
             >
               <RotateCcw className="w-3.5 h-3.5" />
-              <span>Issue Refund</span>
+              <span>{pendingRefund ? "Refund requested" : perms.refund ? "Issue Refund" : "Request refund"}</span>
             </button>
           )}
 
           {invoice.status !== "VOID" && invoice.status !== "PAID" && (
             <button
               type="button"
-              onClick={() => setModalMode("VOID")}
+              disabled={Boolean(pendingVoid)}
+              onClick={() => { setActionError(null); setModalMode("VOID"); }}
               className="px-4 py-2 rounded-full text-xs font-semibold bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200 transition-colors cursor-pointer inline-flex items-center gap-1.5"
             >
               <Ban className="w-3.5 h-3.5" />
-              <span>Void Invoice</span>
+              <span>{pendingVoid ? "Void requested" : perms.void ? "Void Invoice" : "Request void"}</span>
             </button>
           )}
         </div>
@@ -334,10 +386,13 @@ export function InvoiceDetailStaffClient({ invoice }: { invoice: any }) {
       {modalMode === "VOID" && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ink/60 backdrop-blur-xs">
           <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl border border-rule space-y-5 animate-in fade-in zoom-in-95">
-            <h3 className="text-base font-bold text-rose-700">Void Invoice</h3>
+            <h3 className="text-base font-bold text-rose-700">{perms.void ? "Void Invoice" : "Request approval to void"}</h3>
             <p className="text-xs text-muted">
-              Voiding marks this invoice as canceled and invalidates client payment requests.
+              {perms.void
+                ? "Voiding marks this invoice as canceled and invalidates client payment requests."
+                : "An owner will be asked to approve. If they approve, the invoice is voided automatically."}
             </p>
+            {actionError && <p className="text-xs font-semibold text-rose-700">{actionError}</p>}
             <form onSubmit={handleVoid} className="space-y-4 text-xs">
               <div>
                 <label className="block font-semibold text-ink mb-1">Reason for Voiding</label>
@@ -365,7 +420,60 @@ export function InvoiceDetailStaffClient({ invoice }: { invoice: any }) {
                   className="px-5 py-2 rounded-full text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white transition-colors cursor-pointer disabled:opacity-50 inline-flex items-center gap-1.5"
                 >
                   {isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                  <span>Void Invoice</span>
+                  <span>{perms.void ? "Void Invoice" : "Send request"}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Refund Modal */}
+      {modalMode === "REFUND" && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ink/60 backdrop-blur-xs">
+          <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl border border-rule space-y-5 animate-in fade-in zoom-in-95">
+            <h3 className="text-base font-bold text-ink">{perms.refund ? "Refund invoice" : "Request approval to refund"}</h3>
+            <p className="text-xs text-muted">
+              {perms.refund
+                ? "Marks the invoice refunded and records the amount. Send the money back through the payment provider or bank."
+                : "An owner will be asked to approve. If they approve, the refund is recorded automatically."}
+            </p>
+            {actionError && <p className="text-xs font-semibold text-rose-700">{actionError}</p>}
+            <form onSubmit={handleRefund} className="space-y-4 text-xs">
+              <div>
+                <label className="block font-semibold text-ink mb-1">Amount (KES)</label>
+                <input
+                  type="number"
+                  required
+                  min={1}
+                  max={invoice.amount_kes || undefined}
+                  value={refundAmount}
+                  onChange={(e) => setRefundAmount(Number(e.target.value))}
+                  className="w-full p-3 rounded-xl bg-surface border border-rule text-xs"
+                />
+              </div>
+              <div>
+                <label className="block font-semibold text-ink mb-1">Reason</label>
+                <textarea
+                  required
+                  rows={3}
+                  value={refundReason}
+                  onChange={(e) => setRefundReason(e.target.value)}
+                  placeholder="e.g. Duplicate payment via M-Pesa and card"
+                  className="w-full p-3 rounded-xl bg-surface border border-rule text-xs"
+                />
+              </div>
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button type="button" onClick={() => setModalMode(null)} className="px-4 py-2 rounded-full text-xs text-muted hover:text-ink cursor-pointer">
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isPending}
+                  className="px-5 py-2 rounded-full text-xs font-bold bg-[#1B2E24] hover:bg-black text-white cursor-pointer disabled:opacity-50 inline-flex items-center gap-1.5"
+                >
+                  {isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  <span>{perms.refund ? "Record refund" : "Send request"}</span>
                 </button>
               </div>
             </form>

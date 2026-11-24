@@ -1,6 +1,8 @@
 import React from "react";
 import { requireStaffUser, can } from "@/lib/admin-permissions";
 import { projectView } from "@/lib/admin-views";
+import { getScopeSet, filterByScope, enforceScope } from "@/lib/admin-scope";
+
 import { getAdminProjects } from "@/lib/admin-db";
 import { query } from "@/lib/db";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
@@ -13,10 +15,13 @@ export default async function AdminProjectsPage({
 }) {
   const staff = await requireStaffUser("projects:read");
   const resolvedParams = searchParams ? await searchParams : {};
-  const [projects, orgsRes] = await Promise.all([
+  const [allProjects, orgsRes] = await Promise.all([
     getAdminProjects(),
     query("SELECT id, name FROM organizations ORDER BY name ASC")
   ]);
+  const scope = await getScopeSet(staff);
+  const projects = filterByScope(allProjects, scope, { project: "id" });
+  orgsRes.rows = filterByScope(orgsRes.rows, scope, { org: "id" });
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
