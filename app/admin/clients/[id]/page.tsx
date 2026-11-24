@@ -1,7 +1,8 @@
 import { adminPath } from "@/lib/hosts";
 import React from "react";
 import { notFound } from "next/navigation";
-import { requireStaffUser } from "@/lib/admin-permissions";
+import { requireStaffUser, can } from "@/lib/admin-permissions";
+import { clientView } from "@/lib/admin-views";
 import { getAdminClientById } from "@/lib/admin-db";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { ClientDetailClient } from "./ClientDetailClient";
@@ -11,13 +12,23 @@ export default async function AdminClientDetailPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  await requireStaffUser("clients:read");
+  const staff = await requireStaffUser("clients:read");
   const { id } = await params;
-  const client = await getAdminClientById(id);
+  const raw = await getAdminClientById(id);
 
-  if (!client) {
+  if (!raw) {
     notFound();
   }
+  // Private notes are removed on the server for anyone without the matching permission.
+  const client = clientView(staff, raw);
+  const perms = {
+    impersonate: can(staff, "clients:impersonate"),
+    archive: can(staff, "clients:archive"),
+    export: can(staff, "clients:export"),
+    projectsWrite: can(staff, "projects:write"),
+    projectsCreate: can(staff, "projects:create"),
+    internal: can(staff, "clients:internal")
+  };
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
@@ -31,7 +42,7 @@ export default async function AdminClientDetailPage({
         ]}
       />
 
-      <ClientDetailClient client={JSON.parse(JSON.stringify(client))} />
+      <ClientDetailClient client={JSON.parse(JSON.stringify(client))} perms={perms} />
     </div>
   );
 }

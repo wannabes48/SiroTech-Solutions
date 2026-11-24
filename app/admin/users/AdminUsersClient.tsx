@@ -2,25 +2,25 @@
 
 import React, { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Lock, Unlock, UserPlus, KeyRound, Sparkles, AlertCircle, Mail, Ban, RotateCcw, Trash2 } from "lucide-react";
+import { Lock, Unlock, UserPlus, KeyRound, Sparkles, AlertCircle, Mail, Ban, RotateCcw, Trash2, SlidersHorizontal } from "lucide-react";
 import {
   inviteStaffUserAction,
-  changeStaffRoleAction,
   resendAccessAction,
   revokeAccessAction,
   setAccountActiveAction,
   resetTwoStepAction,
 } from "@/app/admin/actions";
 import { ACCESS_STATUS_LABEL, type AccessStatus } from "@/lib/access-status";
-
-type StaffRole = "ADMIN" | "MANAGER" | "EDITOR" | "SUPPORT" | "FINANCE";
+import { ASSIGNABLE_PRESETS, PRESETS, type PresetKey } from "@/lib/admin-permissions-client";
+import { StaffPermissionEditor } from "./StaffPermissionEditor";
 
 interface StaffUser {
   id: string;
   name: string;
   email: string;
   role: string;
-  staff_role: StaffRole;
+  preset: PresetKey;
+  overrides: string[];
   totp_enabled: boolean;
   last_login_at?: string | null;
   invited_at?: string | null;
@@ -28,12 +28,13 @@ interface StaffUser {
   status: AccessStatus;
 }
 
-const roleBadges: Record<string, string> = {
-  ADMIN: "bg-emerald-100 text-emerald-800 border-emerald-200",
-  MANAGER: "bg-sage-100 text-ink border-sage-300",
-  EDITOR: "bg-blue-50 text-blue-800 border-blue-200",
-  SUPPORT: "bg-amber-50 text-amber-800 border-amber-200",
-  FINANCE: "bg-purple-100 text-purple-900 border-purple-200",
+const roleBadges: Record<PresetKey, string> = {
+  admin: "bg-emerald-100 text-emerald-800 border-emerald-200",
+  client_manager: "bg-sage-100 text-ink border-sage-300",
+  delivery_lead: "bg-blue-50 text-blue-800 border-blue-200",
+  editor: "bg-blue-50 text-blue-800 border-blue-200",
+  support: "bg-amber-50 text-amber-800 border-amber-200",
+  finance: "bg-purple-100 text-purple-900 border-purple-200",
 };
 
 const statusBadges: Record<AccessStatus, string> = {
@@ -60,7 +61,8 @@ export function AdminUsersClient({
   const [inviteModalOpen, setInviteModalOpen] = useState(false);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
-  const [role, setRole] = useState<StaffRole>("SUPPORT");
+  const [role, setRole] = useState<PresetKey>("client_manager");
+  const [editing, setEditing] = useState<StaffUser | null>(null);
   const [inviteResult, setInviteResult] = useState<{ ok: boolean; text: string } | null>(null);
   const [toast, setToast] = useState<{ ok: boolean; text: string } | null>(null);
   const [cooldowns, setCooldowns] = useState<Record<string, number>>({});
@@ -89,7 +91,7 @@ export function AdminUsersClient({
     setInviteResult(null);
 
     startTransition(async () => {
-      const res = await inviteStaffUserAction({ name, email, staffRole: role });
+      const res = await inviteStaffUserAction({ name, email, preset: role });
       if (res.userId) {
         setCooldowns((c) => ({ ...c, [res.userId!]: res.retryAfterSeconds || 60 }));
         router.refresh();
@@ -116,14 +118,6 @@ export function AdminUsersClient({
         showToast(true, res.message || okText);
         router.refresh();
       }
-    });
-
-  const handleChangeRole = (userId: string, newRole: string) =>
-    startTransition(async () => {
-      const res = await changeStaffRoleAction(userId, newRole);
-      if (res?.error) return showToast(false, `Role change failed: ${res.error}`);
-      showToast(true, "Staff permission preset updated.");
-      setStaffList((prev) => prev.map((u) => (u.id === userId ? { ...u, staff_role: newRole as StaffRole } : u)));
     });
 
   return (
@@ -186,19 +180,23 @@ export function AdminUsersClient({
                       <div className="text-muted font-mono text-[11px]">{u.email}</div>
                     </td>
                     <td className="py-4 px-5">
-                      <select
-                        value={u.staff_role || "SUPPORT"}
-                        onChange={(e) => handleChangeRole(u.id, e.target.value)}
-                        disabled={isPending || isMe}
-                        aria-label={`Permission preset for ${u.name}`}
-                        className={`px-2.5 py-1 rounded-full text-[11px] font-bold border outline-none cursor-pointer ${roleBadges[u.staff_role || "SUPPORT"]}`}
-                      >
-                        <option value="ADMIN">ADMIN</option>
-                        <option value="MANAGER">MANAGER</option>
-                        <option value="FINANCE">FINANCE</option>
-                        <option value="EDITOR">EDITOR</option>
-                        <option value="SUPPORT">SUPPORT</option>
-                      </select>
+                      <div className="flex flex-col items-start gap-1.5">
+                        <span className={`px-2.5 py-1 rounded-full text-[11px] font-bold border ${roleBadges[u.preset] || roleBadges.support}`}>
+                          {PRESETS[u.preset]?.label || u.preset}
+                        </span>
+                        {u.overrides?.length > 0 && (
+                          <span className="text-[10px] text-muted">{u.overrides.length} override{u.overrides.length > 1 ? "s" : ""}</span>
+                        )}
+                        {isAdmin && !isMe && (
+                          <button
+                            type="button"
+                            onClick={() => setEditing(u)}
+                            className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-800 hover:underline cursor-pointer"
+                          >
+                            <SlidersHorizontal className="w-3 h-3" /> Edit permissions
+                          </button>
+                        )}
+                      </div>
                     </td>
                     <td className="py-4 px-5">
                       <span className={`px-2.5 py-1 rounded-full text-[11px] font-bold border ${statusBadges[u.status]}`}>
@@ -303,6 +301,8 @@ export function AdminUsersClient({
         </div>
       </div>
 
+      {editing && <StaffPermissionEditor user={editing} onClose={() => setEditing(null)} />}
+
       {/* Invite dialog */}
       {inviteModalOpen && (
         <div className="fixed inset-0 z-50 bg-ink/50 backdrop-blur-xs flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="invite-staff-title">
@@ -344,15 +344,14 @@ export function AdminUsersClient({
                 <select
                   id="invite-role"
                   value={role}
-                  onChange={(e) => setRole(e.target.value as StaffRole)}
+                  onChange={(e) => setRole(e.target.value as PresetKey)}
                   className="w-full px-3.5 py-2.5 rounded-xl bg-surface border border-rule font-medium outline-none"
                 >
-                  <option value="ADMIN">ADMIN — Full platform control</option>
-                  <option value="MANAGER">MANAGER — Leads, projects, billing &amp; reports</option>
-                  <option value="FINANCE">FINANCE — Invoices, payments &amp; reports</option>
-                  <option value="EDITOR">EDITOR — Content, blog, media &amp; SEO</option>
-                  <option value="SUPPORT">SUPPORT — Tickets &amp; communication</option>
+                  {ASSIGNABLE_PRESETS.filter((k) => isAdmin || k !== "admin").map((k) => (
+                    <option key={k} value={k}>{PRESETS[k].label}</option>
+                  ))}
                 </select>
+                <p className="mt-1.5 text-muted">{PRESETS[role].description} They must set up two-step verification before any admin page opens. You can fine-tune single permissions after inviting.</p>
               </div>
 
               {inviteResult && (

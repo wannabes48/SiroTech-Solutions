@@ -263,6 +263,20 @@ export async function createTicketAction(formData: FormData) {
       priority,
     });
 
+    // Route to the right side of the team and tell them.
+    const { routeNewTicket } = await import("@/lib/ticket-routing");
+    const assignee = await routeNewTicket(ticketRes.id, category);
+    if (assignee) {
+      const { notifyUser } = await import("@/lib/notifications");
+      const { adminPath } = await import("@/lib/hosts");
+      await notifyUser(assignee.id, user.orgId, {
+        type: "TICKET",
+        title: `New ticket ${ticketRes.ticket_number}: ${subject}`.slice(0, 250),
+        description: `${user.name} (${user.orgName}) opened a ${category.toLowerCase().replace("_", " ")} ticket. It's assigned to you.`,
+        targetHref: adminPath(`/support/${ticketRes.id}`),
+      });
+    }
+
     revalidatePath("/portal/support");
     return { success: true, ticketNumber: ticketRes.ticket_number };
   } catch (err: any) {

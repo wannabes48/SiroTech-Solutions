@@ -5,7 +5,7 @@ import { Search, Globe, CheckCircle2, ExternalLink } from "lucide-react";
 import Link from "next/link";
 
 export default async function AdminSeoPage() {
-  await requireStaffUser("seo:read");
+  await requireStaffUser("seo:write");
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300">

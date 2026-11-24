@@ -16,8 +16,10 @@ import {
   deleteProjectAction,
   resendClientPortalInviteAction,
   revokeAccessAction,
-  setAccountActiveAction
+  setAccountActiveAction,
+  saveAccountNotesAction
 } from "@/app/admin/actions";
+import { ProjectRequestDialog } from "@/components/admin/ProjectRequestDialog";
 import { ACCESS_STATUS_LABEL, type AccessStatus } from "@/lib/access-status";
 import { AdminStatusPill } from "@/components/admin/AdminStatusPill";
 import {
@@ -43,7 +45,18 @@ import {
   X
 } from "lucide-react";
 
-export function ClientDetailClient({ client }: { client: any }) {
+export interface ClientDetailPerms {
+  impersonate: boolean;
+  archive: boolean;
+  export: boolean;
+  projectsWrite: boolean;
+  projectsCreate: boolean;
+  internal: boolean;
+}
+
+const ALL_CLIENT_PERMS: ClientDetailPerms = { impersonate: true, archive: true, export: true, projectsWrite: true, projectsCreate: true, internal: false };
+
+export function ClientDetailClient({ client, perms = ALL_CLIENT_PERMS }: { client: any; perms?: ClientDetailPerms }) {
   const router = useRouter();
   const [impersonating, setImpersonating] = useState(false);
   const [isPending, startTransition] = useTransition();
@@ -296,6 +309,7 @@ export function ClientDetailClient({ client }: { client: any }) {
         <div className="flex items-center gap-2">
           <button
             type="button"
+            hidden={!perms.impersonate}
             disabled={impersonating || isPending}
             onClick={handleImpersonate}
             className="px-5 py-2.5 rounded-full text-xs font-bold bg-[#1B2E24] hover:bg-black text-white transition-colors cursor-pointer inline-flex items-center gap-2 shadow-xs shrink-0 disabled:opacity-50"
@@ -309,6 +323,7 @@ export function ClientDetailClient({ client }: { client: any }) {
           </button>
 
           <a
+            hidden={!perms.export}
             href={`/api/admin/export?table=organizations`}
             target="_blank"
             rel="noopener noreferrer"
@@ -332,7 +347,16 @@ export function ClientDetailClient({ client }: { client: any }) {
                 <p className="text-xs text-muted">Software engineering deliverables and sprint progress.</p>
               </div>
               <div className="flex items-center gap-3">
+                {!perms.projectsWrite && perms.projectsCreate && (
+                  <ProjectRequestDialog
+                    organizations={[{ id: client.id, name: cleanOrgName }]}
+                    defaultOrgId={client.id}
+                    label="Request project"
+                    className="py-1.5 px-3 rounded-full bg-[#1B2E24] hover:bg-black text-white text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer shadow-xs"
+                  />
+                )}
                 <Link
+                  hidden={!perms.projectsWrite}
                   href={adminPath(`/projects?create=true&orgId=${client.id}`)}
                   className="py-1.5 px-3 rounded-full bg-[#1B2E24] hover:bg-black text-white text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer shadow-xs"
                 >
@@ -607,8 +631,10 @@ export function ClientDetailClient({ client }: { client: any }) {
             </div>
           </div>
 
+          {perms.internal && <AccountNotesPanel orgId={client.id} initialNotes={client.account_notes || ""} />}
+
           {/* Organization Lifecycle & Danger Zone */}
-          <div className="p-6 rounded-3xl bg-red-50/40 border border-red-200 text-xs space-y-3">
+          <div hidden={!perms.archive} className="p-6 rounded-3xl bg-red-50/40 border border-red-200 text-xs space-y-3">
             <h4 className="font-bold text-red-950 flex items-center gap-1.5">
               <ShieldAlert className="w-4 h-4 text-red-700" />
               <span>Organization Lifecycle Controls</span>
@@ -834,6 +860,37 @@ export function ClientDetailClient({ client }: { client: any }) {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+/** Client manager's private account notes (clients:internal). Delivery never receives this field. */
+function AccountNotesPanel({ orgId, initialNotes }: { orgId: string; initialNotes: string }) {
+  const [notes, setNotes] = useState(initialNotes);
+  const [saved, setSaved] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
+  const save = () =>
+    startTransition(async () => {
+      const res = await saveAccountNotesAction(orgId, notes);
+      setSaved(res?.error ? res.error : "Saved");
+      setTimeout(() => setSaved(null), 3000);
+    });
+  return (
+    <div className="p-6 rounded-3xl bg-white border border-rule/80 text-xs space-y-2 shadow-xs">
+      <h4 className="font-bold text-ink">Private account notes</h4>
+      <p className="text-muted">Relationship, pricing and renewal notes. Only the client manager side sees these.</p>
+      <textarea
+        rows={5}
+        value={notes}
+        onChange={(e) => setNotes(e.target.value)}
+        className="w-full px-3 py-2 rounded-xl bg-surface border border-rule text-xs"
+      />
+      <div className="flex items-center gap-3">
+        <button type="button" onClick={save} disabled={isPending} className="px-4 py-1.5 rounded-full bg-[#1B2E24] text-white font-semibold cursor-pointer">
+          {isPending ? "Saving…" : "Save notes"}
+        </button>
+        {saved && <span className="text-muted">{saved}</span>}
+      </div>
     </div>
   );
 }

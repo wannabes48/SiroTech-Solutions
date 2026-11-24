@@ -10,7 +10,8 @@ export async function getPortalDashboardData(orgId: string, userId?: string) {
   const projectsRes = await query(
     `SELECT id, slug, title, summary, status, progress, target_launch, staging_url, repo_url, next_step_summary
      FROM projects
-     WHERE org_id = $1 OR ($2::text IS NOT NULL AND org_id IN (SELECT org_id FROM memberships WHERE user_id = $2::uuid))
+     WHERE (org_id = $1 OR ($2::text IS NOT NULL AND org_id IN (SELECT org_id FROM memberships WHERE user_id = $2::uuid)))
+       AND status::text <> 'REQUESTED' -- internal hand-off until delivery scopes it
      ORDER BY created_at DESC`,
     [orgId, userId || null]
   );
@@ -179,13 +180,15 @@ export async function getPortalProjects(orgId: string, userId?: string) {
       ) AS milestones
      FROM projects p
      LEFT JOIN milestones m ON m.project_id = p.id
-     WHERE p.org_id = $1 OR ($2::text IS NOT NULL AND p.org_id IN (SELECT org_id FROM memberships WHERE user_id = $2::uuid))
+     WHERE (p.org_id = $1 OR ($2::text IS NOT NULL AND p.org_id IN (SELECT org_id FROM memberships WHERE user_id = $2::uuid)))
+       AND p.status::text <> 'REQUESTED'
      GROUP BY p.id
      ORDER BY p.created_at DESC`,
     [orgId, userId || null]
   );
 
-  return res.rows;
+  // Internal staff fields never go to the portal.
+  return res.rows.map(({ delivery_notes, delivery_lead_id, budget_kes, brief, requested_by_id, ...p }) => p);
 }
 
 export async function getPortalProjectDetail(orgId: string, idOrSlug: string, isStaff: boolean = false, userId?: string) {
@@ -202,7 +205,9 @@ export async function getPortalProjectDetail(orgId: string, idOrSlug: string, is
   );
 
   if (pRes.rowCount === 0) return null;
-  const project = pRes.rows[0];
+  // Internal staff fields never go to the portal (removed here, not hidden in the browser).
+  const { delivery_notes, delivery_lead_id, budget_kes, brief, requested_by_id, ...project } = pRes.rows[0];
+  if (!isStaff && project.status === "REQUESTED") return null;
 
   // Milestones
   const mRes = await query(

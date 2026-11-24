@@ -6,7 +6,7 @@ import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { AdminHealthClient } from "./AdminHealthClient";
 
 export default async function AdminHealthPage() {
-  await requireStaffUser("system:read");
+  await requireStaffUser("health:read");
 
   const start = Date.now();
   let dbLatency = 0;

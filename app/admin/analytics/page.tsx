@@ -7,7 +7,7 @@ import { AnalyticsWebTrafficCard } from "@/components/admin/AnalyticsWebTrafficC
 import { BarChart3, Users, Globe, ArrowUpRight, TrendingUp, CheckCircle2, ShieldCheck, DollarSign } from "lucide-react";
 
 export default async function AdminAnalyticsPage() {
-  await requireStaffUser("reports:read");
+  await requireStaffUser("analytics:read");
   const data = await getAdminAnalyticsData();
 
   const leads = data?.leads || { total: 0, thisMonth: 0, won: 0, conversionRate: "0%", bySource: [], byService: [] };

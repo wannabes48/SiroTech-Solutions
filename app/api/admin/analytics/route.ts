@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireStaffUser } from "@/lib/admin-permissions";
+import { unstable_rethrow } from "next/navigation";
 import { getGoogleAnalyticsReport } from "@/lib/analytics/google-analytics";
 
 export async function GET(req: NextRequest) {
   try {
-    await requireStaffUser("reports:read");
+    await requireStaffUser("analytics:read");
 
     const searchParams = req.nextUrl.searchParams;
     const forceRefresh = searchParams.get("refresh") === "true";
@@ -16,6 +17,7 @@ export async function GET(req: NextRequest) {
       data: report,
     });
   } catch (error: any) {
+    unstable_rethrow(error);
     if (error.message?.includes("Unauthorized") || error.message?.includes("Forbidden")) {
       return NextResponse.json({ error: error.message }, { status: 403 });
     }
@@ -29,7 +31,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    await requireStaffUser("reports:read");
+    await requireStaffUser("analytics:read");
 
     const body = await req.json().catch(() => ({}));
     const forceRefresh = Boolean(body.forceRefresh);
@@ -41,6 +43,7 @@ export async function POST(req: NextRequest) {
       data: report,
     });
   } catch (error: any) {
+    unstable_rethrow(error);
     if (error.message?.includes("Unauthorized") || error.message?.includes("Forbidden")) {
       return NextResponse.json({ error: error.message }, { status: 403 });
     }

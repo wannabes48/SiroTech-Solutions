@@ -1,47 +1,83 @@
-import { PORTAL_URL } from "@/lib/hosts";
+import { PORTAL_URL, adminPath, adminUrl } from "@/lib/hosts";
 import { getAuthContext, getSessionUser } from "./auth-server";
 import { isMfaVerified } from "./mfa";
 import { query } from "./db";
 import { headers } from "next/headers";
-import { redirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import {
-  StaffRole,
+  PresetKey,
   StaffSessionUser,
-  hasPermission
+  can,
+  isPresetKey,
+  presetFromLegacy,
+  sanitizeOverrides
 } from "./admin-permissions-client";
 
 export * from "./admin-permissions-client";
 
+// Staff have no membership; same fallback org the audit log and session use.
+const FALLBACK_ORG_ID = "e0f52cf9-0000-0000-0000-000000000001";
+
+type StaffRow = {
+  staff_role: string | null;
+  staff_preset?: string | null;
+  staff_permissions?: string[] | null;
+  totp_enabled: boolean | null;
+  totp_secret: string | null;
+};
+
+async function loadStaffRow(userId: string): Promise<StaffRow | null> {
+  try {
+    const res = await query<StaffRow>(
+      "SELECT staff_role, staff_preset, staff_permissions, totp_enabled, totp_secret FROM users WHERE id = $1",
+      [userId]
+    );
+    return res.rows[0] || null;
+  } catch {
+    // Before scripts/migrate-staff-permissions.js has run: legacy columns only.
+    const res = await query<StaffRow>("SELECT staff_role, totp_enabled, totp_secret FROM users WHERE id = $1", [userId]);
+    return res.rows[0] || null;
+  }
+}
+
+export function resolvePreset(row: Pick<StaffRow, "staff_role" | "staff_preset"> | null, userRole?: string | null): PresetKey {
+  if (row && isPresetKey(row.staff_preset)) return row.staff_preset;
+  return presetFromLegacy(row?.staff_role, userRole);
+}
+
+export interface RequireStaffOptions {
+  /** Only the profile page (and the two-step setup action) may load before two-step is set up. */
+  allowWithoutTwoStep?: boolean;
+}
+
 // ==========================================
-// 2. Server Authentication & Permission Guard
+// 1. Server authentication and permission guard
 // ==========================================
-export async function requireStaffUser(requiredPermission?: string): Promise<StaffSessionUser> {
+/**
+ * Every admin page, server action and API route calls this with the permission
+ * it needs. A missing permission is a 404 (never a "forbidden" page that would
+ * confirm the page exists).
+ */
+export async function requireStaffUser(requiredPermission?: string, opts: RequireStaffOptions = {}): Promise<StaffSessionUser> {
   const user = await getSessionUser();
   if (!user) {
     redirect((await getAuthContext()) ? "/sign-in?error=not-allowed" : "/sign-in");
   }
 
-  // Ensure user is staff or admin
   if (user.role !== "STAFF" && user.role !== "ADMIN") {
-    redirect(PORTAL_URL); // Not authorized for admin control room
+    redirect(PORTAL_URL); // Not authorized for the admin control room
   }
 
-  // Fetch staff_role and totp_enabled from database
-  let staffRole: StaffRole = "SUPPORT"; // least privilege if the lookup fails
-  let totpEnabled = false;
-
+  let row: StaffRow | null = null;
   try {
-    const res = await query(
-      "SELECT staff_role, totp_enabled, totp_secret FROM users WHERE id = $1",
-      [user.id]
-    );
-    if (res.rows.length > 0) {
-      staffRole = (res.rows[0].staff_role as StaffRole) || (user.role === "ADMIN" ? "ADMIN" : "SUPPORT");
-      totpEnabled = Boolean(res.rows[0].totp_enabled && res.rows[0].totp_secret);
-    }
+    row = await loadStaffRow(user.id);
   } catch (err) {
-    console.warn("Could not query user staff_role, defaulting to SUPPORT", err);
+    console.warn("Could not load staff permissions; using least privilege", err);
   }
+
+  const preset = row ? resolvePreset(row, user.role) : "support";
+  const isOwner = preset === "admin";
+  const totpEnabled = Boolean(row?.totp_enabled && row?.totp_secret);
 
   // Two-step: a Supabase session alone is not enough when the account has an authenticator.
   if (totpEnabled) {
@@ -49,26 +85,111 @@ export async function requireStaffUser(requiredPermission?: string): Promise<Sta
     if (!ctx || !(await isMfaVerified(ctx.authUserId, ctx.sessionId))) {
       redirect("/two-step");
     }
+  } else if (!isOwner && !opts.allowWithoutTwoStep) {
+    // Non-owner staff must set up an authenticator before any admin page loads.
+    redirect(adminPath("/profile?setup=two-step"));
   }
 
   const staffUser: StaffSessionUser = {
     ...user,
-    staffRole,
+    staffRole: row?.staff_role || (isOwner ? "ADMIN" : "STAFF"),
+    preset,
+    overrides: isOwner ? [] : sanitizeOverrides(row?.staff_permissions || []),
+    isOwner,
     totpEnabled
   };
 
-  // Check specific permission if specified
-  if (requiredPermission && !hasPermission(staffRole, requiredPermission)) {
-    const error = new Error(`Forbidden: Staff role ${staffRole} lacks permission '${requiredPermission}'`);
-    (error as any).digest = "NEXT_NOT_FOUND"; // Hide existence per security spec
-    throw error;
+  if (requiredPermission && !can(staffUser, requiredPermission)) {
+    notFound();
   }
 
   return staffUser;
 }
 
+/** Same guard, for code that reads better as requirePerm("invoices:send"). */
+export const requirePerm = (perm: string) => requireStaffUser(perm);
+
+/** True when the request is allowed; returns false instead of a 404 (for optional parts of a page). */
+export function staffCan(staff: StaffSessionUser, perm: string): boolean {
+  return can(staff, perm);
+}
+
 // ==========================================
-// 3. Centralized Audit Logger
+// 2. Owner alerts (money and export safeguards, hand-offs)
+// ==========================================
+const OWNER_WHERE = `u.role IN ('ADMIN','STAFF') AND COALESCE(u.active, true) = true AND (
+  u.staff_preset = 'admin'
+  OR (u.staff_preset IS NULL AND (u.staff_role = 'ADMIN' OR (u.staff_role IS NULL AND u.role = 'ADMIN')))
+)`;
+
+export async function getOwnerIds(): Promise<{ id: string; email: string; name: string }[]> {
+  try {
+    const res = await query<{ id: string; email: string; name: string }>(`SELECT u.id, u.email, u.name FROM users u WHERE ${OWNER_WHERE}`);
+    return res.rows;
+  } catch {
+    const res = await query<{ id: string; email: string; name: string }>(
+      `SELECT u.id, u.email, u.name FROM users u
+       WHERE u.role IN ('ADMIN','STAFF') AND (u.staff_role = 'ADMIN' OR (u.staff_role IS NULL AND u.role = 'ADMIN'))`
+    );
+    return res.rows;
+  }
+}
+
+/**
+ * In-app notification to every owner (except the actor), plus an optional email
+ * to ALERT_EMAIL. Never throws: a failed alert must not undo the action.
+ */
+export async function notifyOwners(
+  notif: { type: "UPDATE" | "PAYMENT" | "INVOICE" | "TICKET" | "MESSAGE"; title: string; description: string; targetHref: string },
+  opts: { excludeUserId?: string; email?: boolean } = {}
+): Promise<void> {
+  try {
+    const owners = await getOwnerIds();
+    // notifications.org_id is required: prefer the staff fallback org, else any org.
+    const org = await query<{ id: string }>("SELECT id FROM organizations ORDER BY (id = $1) DESC LIMIT 1", [FALLBACK_ORG_ID]);
+    const orgId = org.rows[0]?.id;
+    for (const o of orgId ? owners : []) {
+      if (o.id === opts.excludeUserId) continue;
+      await query(
+        `INSERT INTO notifications (org_id, user_id, type, title, description, target_href, is_read, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, false, NOW())`,
+        [orgId, o.id, notif.type, notif.title, notif.description, notif.targetHref]
+      );
+    }
+    if (opts.email) {
+      const { sendMailAlert } = await import("./email");
+      await sendMailAlert(notif.title, `${notif.description}\n\n${adminUrl(notif.targetHref)}`);
+    }
+  } catch (err) {
+    console.error("[notifyOwners]", err);
+  }
+}
+
+/** Audit + owner alert for every export (who, what, size, when). */
+export async function recordExport(staff: StaffSessionUser, what: string, rowCount: number, bytes: number): Promise<void> {
+  await logAdminAudit({
+    userId: staff.id,
+    userName: staff.name,
+    action: "DATA_EXPORTED",
+    entity: what,
+    metadata: { rowCount, bytes, preset: staff.preset }
+  });
+  if (!staff.isOwner) {
+    const kb = Math.max(1, Math.round(bytes / 1024));
+    await notifyOwners(
+      {
+        type: "UPDATE",
+        title: `Export: ${what} by ${staff.name}`,
+        description: `${staff.name} exported ${rowCount} ${what} rows (${kb} KB) at ${new Date().toISOString()}.`,
+        targetHref: adminPath("/audit")
+      },
+      { excludeUserId: staff.id, email: true }
+    );
+  }
+}
+
+// ==========================================
+// 3. Centralized audit logger
 // ==========================================
 export async function logAdminAudit(options: {
   orgId?: string;

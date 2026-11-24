@@ -12,7 +12,9 @@ import {
   postProjectMessageAction,
   createProjectProposalAction,
   updateProjectDetailsAction,
-  deleteProjectAction
+  deleteProjectAction,
+  acceptProjectRequestAction,
+  saveDeliveryNotesAction
 } from "@/app/admin/actions";
 import {
   FolderGit2,
@@ -39,12 +41,33 @@ import {
   Trash2
 } from "lucide-react";
 
+export interface ProjectHubPerms {
+  projectsWrite: boolean;
+  milestonesWrite: boolean;
+  updatesPost: boolean;
+  messagesWrite: boolean;
+  proposalsSend: boolean;
+  internal: boolean;
+}
+
+const ALL_PERMS: ProjectHubPerms = {
+  projectsWrite: true,
+  milestonesWrite: true,
+  updatesPost: true,
+  messagesWrite: true,
+  proposalsSend: true,
+  internal: true
+};
+
 export function ProjectHubStaffClient({
   project,
-  organizations = []
+  organizations = [],
+  perms = ALL_PERMS
 }: {
   project: any;
   organizations?: any[];
+  /** Hides controls the person can't use. Cosmetic: every action is checked on the server. */
+  perms?: ProjectHubPerms;
 }) {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<
@@ -248,6 +271,10 @@ export function ProjectHubStaffClient({
       {activeTab === "overview" && (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           <div className="lg:col-span-8 space-y-6">
+            {project.status === "REQUESTED" && (
+              <ProjectRequestPanel project={project} canScope={perms.projectsWrite} />
+            )}
+            {perms.internal && <DeliveryNotesPanel projectId={project.id} initialNotes={project.delivery_notes || ""} />}
             {changesRequestedMilestones.length > 0 && (
               <div className="p-5 sm:p-6 rounded-3xl bg-rose-50 border-2 border-rose-300 shadow-xs space-y-4">
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
@@ -396,6 +423,7 @@ export function ProjectHubStaffClient({
               <div className="pt-3 space-y-2 border-t border-rule/60">
                 <button
                   type="button"
+                  hidden={!perms.projectsWrite}
                   onClick={() => setShowEditProject(true)}
                   className="w-full py-2 px-3 rounded-xl bg-[#1B2E24] hover:bg-black text-white text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
                 >
@@ -428,6 +456,7 @@ export function ProjectHubStaffClient({
             </div>
             <button
               type="button"
+              hidden={!perms.milestonesWrite}
               onClick={() => setShowAddMilestone(true)}
               className="py-1.5 px-3.5 rounded-full bg-[#1B2E24] hover:bg-black text-white text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer shadow-xs"
             >
@@ -475,7 +504,7 @@ export function ProjectHubStaffClient({
                       {m.description && <p className="text-xs text-body leading-relaxed">{m.description}</p>}
                     </div>
 
-                    <div className="flex items-center gap-2 shrink-0 flex-wrap">
+                    <div className={`flex items-center gap-2 shrink-0 flex-wrap ${perms.milestonesWrite ? "" : "hidden"}`}>
                       {isChangesRequested && (
                         <>
                           <button
@@ -744,7 +773,7 @@ export function ProjectHubStaffClient({
           <h3 className="text-sm font-bold text-ink">Engineering Sprint Updates</h3>
 
           {/* New Update Composer */}
-          <form onSubmit={handlePostUpdate} className="p-5 rounded-2xl bg-surface/50 border border-rule/60 space-y-3 text-xs">
+          <form onSubmit={handlePostUpdate} hidden={!perms.updatesPost} className="p-5 rounded-2xl bg-surface/50 border border-rule/60 space-y-3 text-xs">
             <h4 className="font-bold text-ink">Post New Sprint Update</h4>
             <input
               type="text"
@@ -883,7 +912,7 @@ export function ProjectHubStaffClient({
           </div>
 
           {/* Message Composer */}
-          <form onSubmit={handleSendMessage} className="space-y-3">
+          <form onSubmit={handleSendMessage} hidden={!perms.messagesWrite} className="space-y-3">
             <textarea
               rows={3}
               required
@@ -930,6 +959,7 @@ export function ProjectHubStaffClient({
             <h3 className="text-sm font-bold text-ink">Engineering Proposals &amp; SOWs</h3>
             <button
               type="button"
+              hidden={!perms.proposalsSend}
               onClick={() => setShowAddProposal(true)}
               className="py-1.5 px-3.5 rounded-full bg-[#1B2E24] hover:bg-black text-white text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer shadow-xs"
             >
@@ -1234,5 +1264,83 @@ function CompassIcon(props: any) {
       <circle cx={12} cy={12} r={10} />
       <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" />
     </svg>
+  );
+}
+
+/** Hand-off from the client manager: brief, budget and deadline, waiting for delivery to scope it. */
+function ProjectRequestPanel({ project, canScope }: { project: any; canScope: boolean }) {
+  const router = useRouter();
+  const [isPending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+  const accept = () =>
+    startTransition(async () => {
+      const res = await acceptProjectRequestAction(project.id);
+      if (res?.error) setError(res.error);
+      else router.refresh();
+    });
+  return (
+    <div className="p-5 sm:p-6 rounded-3xl bg-amber-50 border-2 border-amber-300 space-y-3 text-xs">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h3 className="text-sm font-bold text-amber-950">Project request: awaiting scoping</h3>
+          <p className="text-amber-900 mt-0.5">
+            {project.requested_by_name ? `Requested by ${project.requested_by_name}. ` : ""}
+            Hidden from the client portal until it&apos;s accepted.
+          </p>
+        </div>
+        {canScope && (
+          <button
+            type="button"
+            disabled={isPending}
+            onClick={accept}
+            className="px-4 py-2 rounded-full bg-[#1B2E24] hover:bg-black text-white font-bold cursor-pointer shrink-0"
+          >
+            {isPending ? "Accepting…" : "Accept and start planning"}
+          </button>
+        )}
+      </div>
+      {project.brief && <p className="whitespace-pre-wrap text-ink leading-relaxed bg-white/70 rounded-2xl p-3 border border-amber-200">{project.brief}</p>}
+      <div className="flex flex-wrap gap-4 text-amber-950">
+        {project.budget_kes != null && <span><b>Budget:</b> KES {Number(project.budget_kes).toLocaleString()}</span>}
+        {project.target_launch && <span><b>Deadline:</b> {new Date(project.target_launch).toLocaleDateString()}</span>}
+      </div>
+      {error && <p className="text-rose-700 font-semibold">{error}</p>}
+    </div>
+  );
+}
+
+/** Delivery's private notes (projects:internal). The client manager never receives this field. */
+function DeliveryNotesPanel({ projectId, initialNotes }: { projectId: string; initialNotes: string }) {
+  const [notes, setNotes] = useState(initialNotes);
+  const [saved, setSaved] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
+  const save = () =>
+    startTransition(async () => {
+      const res = await saveDeliveryNotesAction(projectId, notes);
+      setSaved(res?.error ? res.error : "Saved");
+      setTimeout(() => setSaved(null), 3000);
+    });
+  return (
+    <div className="p-5 rounded-3xl bg-white border border-rule/80 space-y-2 text-xs">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-bold text-ink inline-flex items-center gap-1.5">
+          <Lock className="w-3.5 h-3.5 text-amber-700" /> Private delivery notes
+        </h3>
+        <span className="text-muted">Only people with delivery access see these.</span>
+      </div>
+      <textarea
+        rows={4}
+        value={notes}
+        onChange={(e) => setNotes(e.target.value)}
+        placeholder="Technical risks, estimates, internal decisions…"
+        className="w-full px-3 py-2 rounded-xl bg-surface border border-rule text-xs"
+      />
+      <div className="flex items-center gap-3">
+        <button type="button" onClick={save} disabled={isPending} className="px-4 py-1.5 rounded-full bg-[#1B2E24] text-white font-semibold cursor-pointer">
+          {isPending ? "Saving…" : "Save notes"}
+        </button>
+        {saved && <span className="text-muted">{saved}</span>}
+      </div>
+    </div>
   );
 }

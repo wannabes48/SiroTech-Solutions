@@ -1,7 +1,9 @@
 import { adminPath } from "@/lib/hosts";
 import React from "react";
 import { notFound } from "next/navigation";
-import { requireStaffUser } from "@/lib/admin-permissions";
+import { requireStaffUser, can } from "@/lib/admin-permissions";
+import { query } from "@/lib/db";
+import { TicketAssignControl } from "@/components/admin/TicketAssignControl";
 import { getAdminTicketById } from "@/lib/admin-db";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { TicketDetailStaffClient } from "./TicketDetailStaffClient";
@@ -18,6 +20,11 @@ export default async function AdminTicketDetailPage({
   if (!ticket) {
     notFound();
   }
+  const staffList = can(staff, "tickets:assign")
+    ? (await query<{ id: string; name: string }>(
+        "SELECT id, name FROM users WHERE role IN ('ADMIN','STAFF') AND COALESCE(active, true) = true ORDER BY name ASC"
+      )).rows
+    : null;
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
@@ -30,6 +37,8 @@ export default async function AdminTicketDetailPage({
           { label: `#${ticket.ticket_number}` }
         ]}
       />
+
+      {staffList && <TicketAssignControl ticketId={ticket.id} currentAssigneeName={ticket.assignee_name || null} staff={staffList} />}
 
       <TicketDetailStaffClient ticket={ticket} currentStaff={staff} />
     </div>

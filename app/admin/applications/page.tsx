@@ -7,7 +7,7 @@ import { AdminStatusPill } from "@/components/admin/AdminStatusPill";
 import { GraduationCap, Mail, Phone, FileText, ExternalLink } from "lucide-react";
 
 export default async function AdminApplicationsPage() {
-  await requireStaffUser("careers:read");
+  await requireStaffUser("applications:read");
 
   let applications: any[] = [];
   try {

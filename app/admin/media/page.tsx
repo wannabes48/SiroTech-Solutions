@@ -5,7 +5,7 @@ import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { MediaLibraryClient } from "./MediaLibraryClient";
 
 export default async function AdminMediaPage() {
-  await requireStaffUser("media:read");
+  await requireStaffUser("media:write");
   const mediaItems = await getAdminMedia();
 
   return (

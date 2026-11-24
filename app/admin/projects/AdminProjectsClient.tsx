@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AdminStatusPill } from "@/components/admin/AdminStatusPill";
 import { createProjectFromTemplateAction, deleteProjectAction } from "@/app/admin/actions";
+import { ProjectRequestDialog } from "@/components/admin/ProjectRequestDialog";
 import {
   FolderGit2,
   ArrowRight,
@@ -24,12 +25,16 @@ export function AdminProjectsClient({
   initialProjects,
   organizations,
   defaultOrgId,
-  initialOpenModal = false
+  initialOpenModal = false,
+  canCreateProject = true,
+  canRequestProject = false
 }: {
   initialProjects: any[];
   organizations: any[];
   defaultOrgId?: string;
   initialOpenModal?: boolean;
+  canCreateProject?: boolean;
+  canRequestProject?: boolean;
 }) {
   const router = useRouter();
   const [projects, setProjects] = useState(initialProjects);
@@ -77,9 +82,13 @@ export function AdminProjectsClient({
   return (
     <div className="space-y-6">
       {/* Top action bar */}
-      <div className="flex justify-end">
+      <div className="flex justify-end gap-2">
+        {!canCreateProject && canRequestProject && (
+          <ProjectRequestDialog organizations={organizations} defaultOrgId={defaultOrgId} />
+        )}
         <button
           type="button"
+          hidden={!canCreateProject}
           onClick={() => setShowTemplateModal(true)}
           className="py-2.5 px-4 rounded-full bg-[#1B2E24] hover:bg-black text-white text-xs font-semibold inline-flex items-center gap-2 transition-colors cursor-pointer shadow-xs"
         >
@@ -149,6 +158,7 @@ export function AdminProjectsClient({
                   <button
                     type="button"
                     disabled={isPending}
+                    hidden={!canCreateProject}
                     onClick={() => handleDeleteProject(p.id, p.title)}
                     className="p-1 rounded-lg text-muted hover:text-red-700 hover:bg-red-50 transition-colors cursor-pointer"
                     title="Delete Project"

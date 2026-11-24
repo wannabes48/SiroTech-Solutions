@@ -5,7 +5,7 @@ import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { AdminRedirectsClient } from "./AdminRedirectsClient";
 
 export default async function AdminRedirectsPage() {
-  await requireStaffUser("redirects:read");
+  await requireStaffUser("seo:write");
   const [redirects, notFoundLogs] = await Promise.all([
     getAdminRedirects(),
     getAdminNotFoundLogs()

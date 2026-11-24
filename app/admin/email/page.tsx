@@ -6,7 +6,7 @@ import { AdminEmailClient } from "./AdminEmailClient";
 import { getAllTemplateDefinitions } from "@/lib/email-templates/renderer";
 
 export default async function AdminEmailPage() {
-  const staff = await requireStaffUser("system:read");
+  const staff = await requireStaffUser("emails:write");
 
   let dbTemplates: any[] = [];
   let logs: any[] = [];

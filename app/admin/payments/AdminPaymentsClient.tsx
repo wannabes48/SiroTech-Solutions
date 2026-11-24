@@ -1,5 +1,7 @@
 "use client";
 
+import { PRESETS, can, type PresetKey } from "@/lib/admin-permissions-client";
+
 import { adminPath } from "@/lib/hosts";
 import React, { useState, useTransition } from "react";
 import Link from "next/link";
@@ -43,8 +45,9 @@ export function AdminPaymentsClient({
   const [isPending, startTransition] = useTransition();
 
   // Check if current user has refund privileges (Admin and Finance only)
-  const userRole = currentStaff?.staffRole || "SUPPORT";
-  const canRefund = userRole === "ADMIN" || userRole === "FINANCE" || userRole === "MANAGER";
+  // Cosmetic only: refundPaystackPaymentAction checks payments:refund on the server.
+  const userRole = currentStaff ? (PRESETS[currentStaff.preset as PresetKey]?.label ?? "Staff") : "Staff";
+  const canRefund = can(currentStaff, "payments:refund");
 
   // Refund dialog state
   const [refundingPayment, setRefundingPayment] = useState<any | null>(null);

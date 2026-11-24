@@ -1,11 +1,11 @@
 import React from "react";
-import { requireStaffUser } from "@/lib/admin-permissions";
+import { requireStaffUser, can } from "@/lib/admin-permissions";
 import { getAdminContentList } from "@/lib/admin-db";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { ContentListManager } from "@/components/admin/content/ContentListManager";
 
 export default async function AdminTestimonialsPage() {
-  await requireStaffUser("content:read");
+  const staff = await requireStaffUser("content:read");
   const testimonials = await getAdminContentList("testimonial");
 
   return (
@@ -18,6 +18,8 @@ export default async function AdminTestimonialsPage() {
 
       <ContentListManager
         type="testimonial"
+        canPublish={can(staff, "content:publish")}
+        canDelete={can(staff, "content:delete")}
         typeName="Testimonials"
         items={testimonials}
       />

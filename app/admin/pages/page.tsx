@@ -5,7 +5,7 @@ import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { ContentListManager } from "@/components/admin/content/ContentListManager";
 
 export default async function AdminPagesPage() {
-  await requireStaffUser("content:read");
+  await requireStaffUser("content:publish");
 
   const staticPages = [
     { slug: "legal/privacy", title: "Privacy Policy", summary: "Data protection guidelines under Kenya DPA 2019 & GDPR.", status: "PUBLISHED", type: "page" },

@@ -5,7 +5,7 @@ import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { AdminIntegrationsClient } from "./AdminIntegrationsClient";
 
 export default async function AdminIntegrationsPage() {
-  await requireStaffUser("system:read");
+  await requireStaffUser("integrations:read");
 
   // Fetch latest webhook events and timestamps
   const [webhooksRes, calWebhookRes, aiAuditRes, paystackWebhookRes] = await Promise.all([

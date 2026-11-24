@@ -5,7 +5,7 @@ import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { BookOpen, Tag } from "lucide-react";
 
 export default async function AdminBlogCategoriesPage() {
-  await requireStaffUser("blog:read");
+  await requireStaffUser("content:publish");
 
   const categories = [
     { slug: "architecture", name: "System Architecture", count: 4, desc: "High-concurrency distributed systems, database scaling, and microservices." },

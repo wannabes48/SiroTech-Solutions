@@ -1,7 +1,8 @@
 import { adminPath } from "@/lib/hosts";
 import React from "react";
 import Link from "next/link";
-import { requireStaffUser } from "@/lib/admin-permissions";
+import { requireStaffUser, can, presetLabel } from "@/lib/admin-permissions";
+import { query } from "@/lib/db";
 import { getAdminOverviewData } from "@/lib/admin-db";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { AdminStatusPill } from "@/components/admin/AdminStatusPill";
@@ -31,6 +32,19 @@ import {
 export default async function AdminDashboardPage() {
   const staff = await requireStaffUser();
   const data = await getAdminOverviewData();
+  // Only widgets this person may read are rendered (and so sent to the browser).
+  const show = {
+    pipeline: can(staff, "leads:read"),
+    money: can(staff, "invoices:read"),
+    payments: can(staff, "payments:read"),
+    tickets: can(staff, "tickets:read"),
+    messages: can(staff, "messages:read"),
+    delivery: can(staff, "projects:read"),
+    analytics: can(staff, "analytics:read"),
+    system: can(staff, "health:read"),
+    audit: can(staff, "audit:read")
+  };
+  const requests = show.delivery ? await getProjectRequests(can(staff, "projects:write") ? null : staff.id) : [];
   const { metrics, today, pipelineByStage, money, projectsAtRisk, site, system, recentLeads, recentActivity, activeProjects } = data;
 
   const firstName = staff.name.split(" ")[0];
@@ -41,19 +55,42 @@ export default async function AdminDashboardPage() {
       <AdminPageHeader
         title={`Welcome back, ${firstName}`}
         subtitle="Centralized operations control room for SiroTech: client delivery, revenue pipeline, content, and system health."
-        badge={`${staff.staffRole} ACCESS`}
-        badgeVariant={staff.staffRole === "ADMIN" ? "success" : "default"}
-        primaryAction={{
+        badge={presetLabel(staff)}
+        badgeVariant={staff.isOwner ? "success" : "default"}
+        primaryAction={can(staff, "leads:write") ? {
           label: "New Lead",
           href: adminPath("/leads?create=true"),
           icon: <Plus className="w-3.5 h-3.5" />
-        }}
-        secondaryAction={{
+        } : undefined}
+        secondaryAction={show.audit ? {
           label: "Audit Trail",
           href: adminPath("/audit"),
           icon: <Activity className="w-3.5 h-3.5" />
-        }}
+        } : undefined}
       />
+
+      {requests.length > 0 && (
+        <div className="bg-amber-50 rounded-3xl border border-amber-300 p-6 shadow-xs space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="text-base font-bold text-amber-950">
+              {can(staff, "projects:write") ? "Awaiting scoping" : "Your project requests"}
+            </h2>
+            <span className="text-xs font-semibold text-amber-900">{requests.length} open</span>
+          </div>
+          <div className="divide-y divide-amber-200 text-xs">
+            {requests.map((r) => (
+              <Link key={r.id} href={adminPath(`/projects/${r.id}`)} className="py-2.5 flex items-center justify-between gap-4 hover:underline">
+                <span className="font-semibold text-ink truncate">{r.title} <span className="text-muted font-normal">• {r.org_name}</span></span>
+                <span className="text-amber-900 shrink-0">
+                  {r.budget_kes ? `KES ${Number(r.budget_kes).toLocaleString()} • ` : ""}
+                  {r.requested_by_name ? `from ${r.requested_by_name} • ` : ""}
+                  {new Date(r.created_at).toLocaleDateString([], { month: "short", day: "numeric" })}
+                </span>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* 2. "TODAY" Operational Hub (Role-Aware) */}
       <div className="bg-white rounded-3xl border border-rule/80 p-6 sm:p-7 shadow-xs space-y-4">
@@ -74,6 +111,7 @@ export default async function AdminDashboardPage() {
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5 pt-1">
+          {show.pipeline && (
           <Link
             href={adminPath("/leads?created=today")}
             className="p-4 rounded-2xl bg-surface/50 border border-rule/60 hover:bg-emerald-50/50 hover:border-emerald-300 transition-all group"
@@ -82,7 +120,9 @@ export default async function AdminDashboardPage() {
             <div className="text-2xl font-bold text-ink mt-1 group-hover:text-emerald-800">{today.newLeadsToday}</div>
             <div className="text-[11px] text-muted mt-0.5">last 24 hours &rarr;</div>
           </Link>
+          )}
 
+          {show.tickets && (
           <Link
             href={adminPath("/support?status=OPEN")}
             className="p-4 rounded-2xl bg-surface/50 border border-rule/60 hover:bg-amber-50/50 hover:border-amber-300 transition-all group"
@@ -91,7 +131,9 @@ export default async function AdminDashboardPage() {
             <div className="text-2xl font-bold text-ink mt-1 group-hover:text-amber-800">{today.ticketsWaiting}</div>
             <div className="text-[11px] text-muted mt-0.5">SLA countdown &rarr;</div>
           </Link>
+          )}
 
+          {show.messages && (
           <Link
             href={adminPath("/messages?unread=true")}
             className="p-4 rounded-2xl bg-surface/50 border border-rule/60 hover:bg-blue-50/50 hover:border-blue-300 transition-all group"
@@ -100,7 +142,9 @@ export default async function AdminDashboardPage() {
             <div className="text-2xl font-bold text-ink mt-1 group-hover:text-blue-800">{today.unreadMessagesCount}</div>
             <div className="text-[11px] text-muted mt-0.5">across sprints &rarr;</div>
           </Link>
+          )}
 
+          {show.payments && (
           <Link
             href={adminPath("/payments")}
             className="p-4 rounded-2xl bg-surface/50 border border-rule/60 hover:bg-sage-100 hover:border-sage-300 transition-all group"
@@ -111,7 +155,9 @@ export default async function AdminDashboardPage() {
             </div>
             <div className="text-[11px] text-muted mt-0.5">settled KES &rarr;</div>
           </Link>
+          )}
 
+          {show.delivery && (
           <Link
             href={adminPath("/projects")}
             className="p-4 rounded-2xl bg-surface/50 border border-rule/60 hover:bg-purple-50/50 hover:border-purple-300 transition-all group col-span-2 sm:col-span-1"
@@ -120,9 +166,10 @@ export default async function AdminDashboardPage() {
             <div className="text-2xl font-bold text-ink mt-1 group-hover:text-purple-800">{today.milestonesAwaitingClient}</div>
             <div className="text-[11px] text-muted mt-0.5">milestones ready &rarr;</div>
           </Link>
+          )}
         </div>
 
-        {today.milestonesChangesRequested > 0 && (
+        {show.delivery && today.milestonesChangesRequested > 0 && (
           <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-950 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pt-3">
             <div className="flex items-center gap-2.5">
               <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
@@ -142,6 +189,7 @@ export default async function AdminDashboardPage() {
 
       {/* 3. PIPELINE & MONEY Widgets */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+{show.pipeline && (<>
         {/* Pipeline Widget (7 cols) */}
         <div className="lg:col-span-7 bg-white rounded-3xl border border-rule/80 p-6 sm:p-8 shadow-xs space-y-6">
           <div className="flex items-center justify-between">
@@ -207,6 +255,8 @@ export default async function AdminDashboardPage() {
           </div>
         </div>
 
+</>)}
+{show.money && (<>
         {/* Money & Aging Widget (5 cols) */}
         <div className="lg:col-span-5 bg-white rounded-3xl border border-rule/80 p-6 sm:p-8 shadow-xs space-y-6">
           <div className="flex items-center justify-between">
@@ -269,10 +319,12 @@ export default async function AdminDashboardPage() {
             </div>
           </div>
         </div>
+</>)}
       </div>
 
       {/* 4. DELIVERY & SITE & SYSTEM Widgets */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+{show.delivery && (<>
         {/* Delivery (Projects at Risk) */}
         <div className="bg-white rounded-3xl border border-rule/80 p-6 shadow-xs space-y-4">
           <div className="flex items-center justify-between">
@@ -318,9 +370,13 @@ export default async function AdminDashboardPage() {
           </Link>
         </div>
 
+</>)}
         {/* Site Analytics (Google Analytics 4) & Publish Queue */}
+{show.analytics && (<>
         <SiteTrafficWidget initialSite={site} />
 
+</>)}
+{show.system && (<>
         {/* System & AI Health */}
         <div className="bg-white rounded-3xl border border-rule/80 p-6 shadow-xs space-y-4">
           <div className="flex items-center justify-between">
@@ -363,8 +419,10 @@ export default async function AdminDashboardPage() {
             <ArrowRight className="w-3.5 h-3.5" />
           </Link>
         </div>
+</>)}
       </div>
 
+{show.audit && (<>
       {/* 5. Live Operational Audit Trail */}
       <div className="bg-white rounded-3xl border border-rule/80 p-6 sm:p-8 shadow-xs space-y-6">
         <div className="flex items-center justify-between">
@@ -404,6 +462,26 @@ export default async function AdminDashboardPage() {
           ))}
         </div>
       </div>
+</>)}
     </div>
   );
+}
+
+/** Project requests waiting for delivery (all of them for delivery; your own for the requester). */
+async function getProjectRequests(requestedById: string | null) {
+  try {
+    const res = await query<{ id: string; title: string; org_name: string; budget_kes: number | null; created_at: string; requested_by_name: string | null }>(
+      `SELECT p.id, p.title, o.name AS org_name, p.budget_kes, p.created_at, u.name AS requested_by_name
+       FROM projects p
+       JOIN organizations o ON o.id = p.org_id
+       LEFT JOIN users u ON u.id = p.requested_by_id
+       WHERE p.status::text = 'REQUESTED' AND ($1::uuid IS NULL OR p.requested_by_id = $1::uuid)
+       ORDER BY p.created_at ASC
+       LIMIT 20`,
+      [requestedById]
+    );
+    return res.rows;
+  } catch {
+    return []; // columns arrive with scripts/migrate-staff-permissions.js
+  }
 }

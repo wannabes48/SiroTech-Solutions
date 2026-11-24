@@ -5,7 +5,7 @@ import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { AdminPrivacyClient } from "./AdminPrivacyClient";
 
 export default async function AdminPrivacyPage() {
-  await requireStaffUser("privacy:manage");
+  await requireStaffUser("privacy:write");
 
   let requests: any[] = [];
   try {

@@ -1,5 +1,7 @@
 "use client";
 
+import { PRESETS, type PresetKey } from "@/lib/admin-permissions-client";
+
 import React, { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { AdminStatusPill } from "@/components/admin/AdminStatusPill";
@@ -62,9 +64,9 @@ export function TicketDetailStaffClient({
     startTransition(async () => {
       const res = await replySupportTicketAction(ticket.id, message, ticketStatus);
       if (res?.success) {
-        const staffRoleTitle = currentStaff?.staffRole === "ADMIN"
+        const staffRoleTitle = currentStaff?.isOwner
           ? "Staff Admin"
-          : (currentStaff?.staffRole ? `Staff ${currentStaff.staffRole.charAt(0) + currentStaff.staffRole.slice(1).toLowerCase()}` : "Support Staff");
+          : `Staff ${PRESETS[currentStaff?.preset as PresetKey]?.label ?? "Support"}`;
 
         setReplies((prev: any[]) => [
           ...prev,

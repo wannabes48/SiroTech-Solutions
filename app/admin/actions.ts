@@ -1,10 +1,22 @@
 "use server";
 
-import { portalPath, portalUrl } from "@/lib/hosts";
+import { adminPath, portalPath, portalUrl } from "@/lib/hosts";
 import { revalidatePath, revalidateTag } from "next/cache";
 import crypto from "crypto";
 import { query } from "@/lib/db";
-import { requireStaffUser, logAdminAudit } from "@/lib/admin-permissions";
+import {
+  requireStaffUser,
+  logAdminAudit,
+  notifyOwners,
+  can,
+  presetLabel,
+  isPresetKey,
+  sanitizeOverrides,
+  effectivePermissions,
+  getOwnerIds,
+  type StaffSessionUser,
+  type PresetKey
+} from "@/lib/admin-permissions";
 import { cookies } from "next/headers";
 import { notifyClientUsers, notifyUser } from "@/lib/notifications";
 import { sendAccessEmail, revokeAccess, setAccountActive, resetTwoStep } from "@/lib/access-email";
@@ -121,6 +133,47 @@ export async function convertLeadToClientAction(leadId: string) {
      ON CONFLICT (org_id, user_id) DO NOTHING`,
     [newOrgId, clientUserId]
   );
+
+  // Delivery scopes projects. Without projects:write (the client manager), conversion
+  // hands off a REQUESTED project with the lead's brief instead of a scoped plan.
+  if (!can(staff, "projects:write")) {
+    await query("UPDATE leads SET status = 'WON', converted_org_id = $1, updated_at = NOW() WHERE id = $2", [newOrgId, leadId]);
+    const access = await sendAccessEmail({ email: lead.email, area: "portal", name: lead.name, invitedById: staff.id });
+    const brief = [lead.message, lead.service && `Service: ${lead.service}`, lead.budget && `Budget band: ${lead.budget}`, lead.timeline && `Timeline: ${lead.timeline}`]
+      .filter(Boolean)
+      .join("\n\n");
+    let projectId: string | undefined;
+    if (can(staff, "projects:create")) {
+      const req = await createProjectRequestAction({
+        orgId: newOrgId,
+        title: `${orgName} ${lead.service || "project"}`.trim(),
+        brief: brief.length >= 20 ? brief : `New client ${orgName} converted from a won lead. Brief to follow from ${staff.name}.`,
+        budgetKes: Number(lead.value) > 0 ? Number(lead.value) : undefined,
+        leadId
+      });
+      projectId = req.projectId;
+    }
+    await logAdminAudit({
+      orgId: newOrgId,
+      userId: staff.id,
+      userName: staff.name,
+      action: "LEAD_CONVERTED_TO_CLIENT",
+      entity: "organization",
+      entityId: newOrgId,
+      metadata: { leadId, orgName, clientEmail: lead.email, projectRequestId: projectId || null, access: access.ok ? access.kind : access.error }
+    });
+    revalidatePath("/admin/leads");
+    revalidatePath("/admin/clients");
+    revalidatePath("/admin/projects");
+    return {
+      success: true,
+      orgId: newOrgId,
+      projectId,
+      projectRequested: Boolean(projectId),
+      inviteSent: access.ok,
+      accessResult: access.ok ? (access.kind === "invite" ? "Invite sent" : "Sign-in link sent") : access.error,
+    };
+  }
 
   // Create draft Project with template milestones
   const projectTitle = `${orgName} Platform Launch`;
@@ -390,7 +443,7 @@ export async function createAdminConsultationAction(formData: FormData): Promise
 // 2. Tasks Management
 // ==========================================
 export async function createAdminTaskAction(formData: FormData): Promise<{ success?: boolean; taskId?: string; error?: string }> {
-  const staff = await requireStaffUser();
+  const staff = await requireStaffUser("dashboard:read");
 
   const title = (formData.get("title") as string)?.trim();
   const dueAt = formData.get("dueAt") as string;
@@ -420,7 +473,7 @@ export async function createAdminTaskAction(formData: FormData): Promise<{ succe
 }
 
 export async function toggleAdminTaskAction(taskId: string, isDone: boolean): Promise<{ success?: boolean; error?: string }> {
-  const staff = await requireStaffUser();
+  const staff = await requireStaffUser("dashboard:read");
 
   await query(
     "UPDATE tasks SET done_at = $1 WHERE id = $2",
@@ -438,18 +491,54 @@ export async function toggleAdminTaskDoneAction(taskId: string, isDone: boolean)
 // ==========================================
 // 3. Invoices & Billing Operations
 // ==========================================
+/**
+ * Money safeguard: a payment marked received by hand (bank, cash, matched M-Pesa)
+ * is flagged "manual" on the payment row and in the audit log, and the owners are
+ * alerted unless an owner did it themselves.
+ */
+async function flagManualPayment(
+  paymentId: string | undefined,
+  staff: StaffSessionUser,
+  info: { invoiceId: string; amountKes: number; method: string; reference: string }
+) {
+  if (paymentId) {
+    try {
+      await query("UPDATE payments SET recorded_manually = true, recorded_by_id = $1 WHERE id = $2", [staff.id, paymentId]);
+    } catch {
+      // Columns arrive with scripts/migrate-staff-permissions.js; the audit entry still records it.
+    }
+  }
+  if (staff.isOwner) return;
+  const inv = await query<{ invoice_number: string }>("SELECT invoice_number FROM invoices WHERE id = $1", [info.invoiceId]);
+  await notifyOwners(
+    {
+      type: "PAYMENT",
+      title: `Manual payment: ${inv.rows[0]?.invoice_number || "invoice"} marked paid by ${staff.name}`,
+      description: `KES ${Number(info.amountKes).toLocaleString()} via ${info.method}, ref ${info.reference || "none"}. Check it against the bank or M-Pesa statement.`,
+      targetHref: adminPath(`/invoices/${info.invoiceId}`)
+    },
+    { excludeUserId: staff.id, email: true }
+  );
+}
+
 export async function recordManualPaymentAction(invoiceId: string, amountKes: number, method: string, reference: string) {
-  const staff = await requireStaffUser("invoices:write");
+  const staff = await requireStaffUser("invoices:markpaid");
 
   const invRes = await query("SELECT org_id, amount_kes FROM invoices WHERE id = $1", [invoiceId]);
   if (invRes.rows.length === 0) return { error: "Invoice not found" };
   const inv = invRes.rows[0];
 
-  await query(
+  const payIns = await query<{ id: string }>(
     `INSERT INTO payments (invoice_id, org_id, amount_kes, method, reference, status)
-     VALUES ($1, $2, $3, $4, $5, 'SUCCESS')`,
+     VALUES ($1, $2, $3, $4, $5, 'SUCCESS') RETURNING id`,
     [invoiceId, inv.org_id, amountKes, method, reference]
   );
+  await flagManualPayment(payIns.rows[0]?.id, staff, {
+    invoiceId,
+    amountKes,
+    method,
+    reference
+  });
 
   // Mark invoice as PAID
   await query(
@@ -463,7 +552,7 @@ export async function recordManualPaymentAction(invoiceId: string, amountKes: nu
     action: "PAYMENT_RECORDED_MANUALLY",
     entity: "invoice",
     entityId: invoiceId,
-    metadata: { amountKes, method, reference }
+    metadata: { amountKes, method, reference, manual: true }
   });
 
   await notifyClientUsers(inv.org_id, {
@@ -503,7 +592,7 @@ export async function voidInvoiceAction(invoiceId: string, reason: string) {
 }
 
 export async function refundInvoiceAction(invoiceId: string, amountKes: number, reason: string) {
-  const staff = await requireStaffUser("invoices:refund");
+  const staff = await requireStaffUser("payments:refund");
 
   await query(
     "UPDATE invoices SET status = 'REFUNDED', refunded_amount_kes = $1, void_reason = $2 WHERE id = $3",
@@ -534,6 +623,8 @@ export async function createAdminInvoiceAction(params: {
   discountKes?: number;
 }) {
   const staff = await requireStaffUser("invoices:write");
+  // Creating an invoice also emails it to the client.
+  if (!can(staff, "invoices:send")) return { error: "You can draft invoices, but sending them needs the invoices:send permission." };
 
   const subtotal = params.lineItems.reduce((acc, curr) => acc + (curr.quantity * curr.unitPrice), 0);
   const discount = params.discountKes || 0;
@@ -717,18 +808,24 @@ export async function resolveUnmatchedMpesaAction(params: {
   amountKes: number;
   invoiceId: string;
 }) {
-  const staff = await requireStaffUser("invoices:write");
+  const staff = await requireStaffUser("invoices:markpaid");
 
   const invRes = await query("SELECT org_id, amount_kes FROM invoices WHERE id = $1", [params.invoiceId]);
   if (invRes.rows.length === 0) return { error: "Target invoice not found" };
   const inv = invRes.rows[0];
 
   // Insert payment
-  await query(
+  const payIns = await query<{ id: string }>(
     `INSERT INTO payments (invoice_id, org_id, amount_kes, method, reference, status, created_at)
-     VALUES ($1, $2, $3, 'MPESA', $4, 'SUCCESS', NOW())`,
+     VALUES ($1, $2, $3, 'MPESA', $4, 'SUCCESS', NOW()) RETURNING id`,
     [params.invoiceId, inv.org_id, params.amountKes, params.mpesaRef]
   );
+  await flagManualPayment(payIns.rows[0]?.id, staff, {
+    invoiceId: params.invoiceId,
+    amountKes: params.amountKes,
+    method: "MPESA (matched by hand)",
+    reference: params.mpesaRef
+  });
 
   // Mark invoice as PAID
   await query("UPDATE invoices SET status = 'PAID', paid_at = NOW() WHERE id = $1", [params.invoiceId]);
@@ -738,7 +835,7 @@ export async function resolveUnmatchedMpesaAction(params: {
     userName: staff.name,
     action: "UNMATCHED_MPESA_RESOLVED",
     entity: "payment",
-    metadata: { mpesaRef: params.mpesaRef, invoiceId: params.invoiceId, amountKes: params.amountKes }
+    metadata: { mpesaRef: params.mpesaRef, invoiceId: params.invoiceId, amountKes: params.amountKes, manual: true }
   });
 
   revalidatePath("/admin/payments");
@@ -752,10 +849,7 @@ export async function refundPaystackPaymentAction(params: {
   amountKes: number;
   reason: string;
 }) {
-  const staff = await requireStaffUser("invoices:refund");
-  if (staff.staffRole !== "ADMIN" && staff.staffRole !== "FINANCE" && staff.staffRole !== "MANAGER") {
-    return { error: "Refunds are restricted to Admin and Finance roles only." };
-  }
+  const staff = await requireStaffUser("payments:refund");
 
   const payRes = await query("SELECT * FROM payments WHERE id = $1", [params.paymentId]);
   if (payRes.rows.length === 0) return { error: "Payment record not found." };
@@ -776,7 +870,7 @@ export async function refundPaystackPaymentAction(params: {
           referenceOrTxId: pay.provider_tx_id || pay.reference,
           amountKes: params.amountKes,
           reason: params.reason,
-          merchantNote: `Authorized by ${staff.name} (${staff.staffRole})`
+          merchantNote: `Authorized by ${staff.name} (${presetLabel(staff)})`
         });
         if (!refResult.success && !refResult.data?.simulated) {
           console.warn("[refundPaystackPaymentAction] Paystack gateway returned notice:", refResult.error);
@@ -821,7 +915,7 @@ export async function refundPaystackPaymentAction(params: {
       amountKes: params.amountKes,
       reason: params.reason,
       staffEmail: staff.email,
-      staffRole: staff.staffRole,
+      staffPreset: staff.preset,
       gatewayResponse: gatewayRefundRes
     }
   });
@@ -833,7 +927,7 @@ export async function refundPaystackPaymentAction(params: {
 }
 
 export async function togglePauseRecurringPlanAction(planId: string, pause: boolean) {
-  const staff = await requireStaffUser("invoices:write");
+  const staff = await requireStaffUser("recurring:write");
   const newStatus = pause ? "PAUSED" : "ACTIVE";
   
   await query(
@@ -866,7 +960,7 @@ export async function editRecurringPlanAction(params: {
   failureAlert?: string | null;
 }) {
   try {
-    const staff = await requireStaffUser("invoices:write");
+    const staff = await requireStaffUser("recurring:write");
 
     await query(
       `UPDATE recurring_plans 
@@ -915,7 +1009,7 @@ export async function createRecurringPlanAction(params: {
   nextRunDate: string;
 }) {
   try {
-    const staff = await requireStaffUser("invoices:write");
+    const staff = await requireStaffUser("recurring:write");
 
     const res = await query(
       `INSERT INTO recurring_plans (org_id, project_id, title, plan_type, schedule, amount_kes, amount_usd, status, auto_send, next_run_date)
@@ -954,7 +1048,7 @@ export async function createRecurringPlanAction(params: {
 }
 
 export async function autoCreateAndSendRecurringInvoiceAction(planId: string) {
-  const staff = await requireStaffUser("invoices:write");
+  const staff = await requireStaffUser("invoices:send");
 
   const planRes = await query(
     `SELECT rp.*, o.name AS org_name, o.billing_email
@@ -1057,7 +1151,7 @@ export async function autoCreateAndSendRecurringInvoiceAction(planId: string) {
 }
 
 export async function dismissRecurringFailureAlertAction(planId: string) {
-  const staff = await requireStaffUser("invoices:write");
+  const staff = await requireStaffUser("recurring:write");
   await query("UPDATE recurring_plans SET failure_alert = NULL, updated_at = NOW() WHERE id = $1", [planId]);
   
   await logAdminAudit({
@@ -1080,7 +1174,12 @@ export async function replySupportTicketAction(ticketId: string, message: string
 
   if (!message.trim()) return { error: "Reply message cannot be empty" };
 
-  const roleTitle = staff.staffRole === "ADMIN" ? "Staff Admin" : (staff.staffRole ? `Staff ${staff.staffRole.charAt(0) + staff.staffRole.slice(1).toLowerCase()}` : "Support Staff");
+  const status = newStatus || "WAITING_ON_CLIENT";
+  if ((status === "RESOLVED" || status === "CLOSED") && !can(staff, "tickets:close")) {
+    return { error: "You can reply, but closing tickets needs the tickets:close permission." };
+  }
+
+  const roleTitle = staff.isOwner ? "Staff Admin" : `Staff ${presetLabel(staff)}`;
 
   await query(
     `INSERT INTO ticket_replies (ticket_id, author_id, author_name, author_role, is_staff, content, message, created_at)
@@ -1088,7 +1187,6 @@ export async function replySupportTicketAction(ticketId: string, message: string
     [ticketId, staff.id, staff.name, roleTitle, message.trim()]
   );
 
-  const status = newStatus || "WAITING_ON_CLIENT";
   await query(
     "UPDATE support_tickets SET status = $1, first_response_at = COALESCE(first_response_at, NOW()), updated_at = NOW() WHERE id = $2",
     [status, ticketId]
@@ -1141,6 +1239,36 @@ export async function updateSupportTicketInternalNoteAction(ticketId: string, in
   return { success: true };
 }
 
+/** Reassign a ticket to a staff member (default routing: billing/account to the client manager, bugs/changes to delivery). */
+export async function assignSupportTicketAction(ticketId: string, assigneeUserId: string): Promise<{ success?: boolean; error?: string }> {
+  const staff = await requireStaffUser("tickets:assign");
+  const u = await query<{ id: string; name: string }>(
+    "SELECT id, name FROM users WHERE id = $1 AND role IN ('ADMIN','STAFF') AND COALESCE(active, true) = true",
+    [assigneeUserId]
+  );
+  if (!u.rows[0]) return { error: "Pick an active staff member." };
+  try {
+    await query("UPDATE support_tickets SET assignee_id = $1, assignee_name = $2, updated_at = NOW() WHERE id = $3", [u.rows[0].id, u.rows[0].name, ticketId]);
+  } catch {
+    await query("UPDATE support_tickets SET assignee_name = $1, updated_at = NOW() WHERE id = $2", [u.rows[0].name, ticketId]);
+  }
+  await logAdminAudit({ userId: staff.id, userName: staff.name, action: "TICKET_ASSIGNED", entity: "support_ticket", entityId: ticketId, metadata: { assignee: u.rows[0].name } });
+  if (u.rows[0].id !== staff.id) {
+    const t = await query<{ ticket_number: string; subject: string; org_id: string }>("SELECT ticket_number, subject, org_id FROM support_tickets WHERE id = $1", [ticketId]);
+    if (t.rows[0]) {
+      await notifyUser(u.rows[0].id, t.rows[0].org_id, {
+        type: "TICKET",
+        title: `Ticket ${t.rows[0].ticket_number} assigned to you`,
+        description: `${staff.name} assigned "${t.rows[0].subject}" to you.`,
+        targetHref: adminPath(`/support/${ticketId}`)
+      });
+    }
+  }
+  revalidatePath(`/admin/support/${ticketId}`);
+  revalidatePath("/admin/support");
+  return { success: true };
+}
+
 // ==========================================
 // 4b. Canned Replies & Contact Form Inquiries
 // ==========================================
@@ -1150,7 +1278,7 @@ export async function createCannedReplyAction(params: {
   body: string;
   scope?: string;
 }) {
-  const staff = await requireStaffUser("tickets:write");
+  const staff = await requireStaffUser("canned:write");
   const res = await query(
     `INSERT INTO canned_replies (title, category, body, scope, created_at)
      VALUES ($1, $2, $3, $4, NOW())
@@ -1178,7 +1306,7 @@ export async function updateCannedReplyAction(params: {
   body: string;
   scope?: string;
 }) {
-  const staff = await requireStaffUser("tickets:write");
+  const staff = await requireStaffUser("canned:write");
   await query(
     `UPDATE canned_replies 
      SET title = $1, category = $2, body = $3, scope = $4
@@ -1200,7 +1328,7 @@ export async function updateCannedReplyAction(params: {
 }
 
 export async function deleteCannedReplyAction(id: string) {
-  const staff = await requireStaffUser("tickets:write");
+  const staff = await requireStaffUser("canned:write");
   await query("DELETE FROM canned_replies WHERE id = $1", [id]);
 
   await logAdminAudit({
@@ -1266,7 +1394,7 @@ export async function updateContactInquiryStatusAction(inquiryId: string, status
 // 4c. Integrations Test Ping Actions
 // ==========================================
 export async function testIntegrationAction(provider: string) {
-  const staff = await requireStaffUser("system:read");
+  const staff = await requireStaffUser("integrations:write");
   const upperProvider = provider.toUpperCase();
 
   let message = `${provider} connection verified successfully.`;
@@ -1370,7 +1498,11 @@ export async function toggleStaffTwoFactorAction(params: {
   secret?: string;
   code?: string;
 }) {
-  const staff = await requireStaffUser();
+  // Runs before two-step exists (that's the point), so it can't require it.
+  const staff = await requireStaffUser(undefined, { allowWithoutTwoStep: true });
+  if (!params.enable && !staff.isOwner) {
+    return { error: "Two-step verification is required for staff accounts. Ask an owner to reset it if you've lost your device." };
+  }
   // The admin sign-in enforces this code, so prove the authenticator works before enabling it.
   if (params.enable) {
     const { verifyTotp } = await import("@/lib/totp");
@@ -1470,7 +1602,7 @@ export async function updateStaffNotificationPrefsAction(params: {
 // 5. Site Settings & Feature Flags
 // ==========================================
 export async function toggleFeatureFlagAction(key: string, enabled: boolean) {
-  const staff = await requireStaffUser("settings:manage");
+  const staff = await requireStaffUser("settings:write");
 
   await query(
     "UPDATE feature_flags SET enabled = $1, updated_at = NOW() WHERE key = $2",
@@ -1491,7 +1623,7 @@ export async function toggleFeatureFlagAction(key: string, enabled: boolean) {
 }
 
 export async function updateSiteSettingsAction(groupKey: string, value: any) {
-  const staff = await requireStaffUser("settings:manage");
+  const staff = await requireStaffUser("settings:write");
 
   await query(
     `INSERT INTO site_settings (key, value, updated_at)
@@ -1516,6 +1648,9 @@ export async function updateSiteSettingsAction(groupKey: string, value: any) {
 // ==========================================
 // 6. Content Store Actions & Revalidation
 // ==========================================
+/** Content a non-publisher may draft (client manager: testimonials and case studies; blog for technical write-ups). */
+const DRAFTABLE_CONTENT_TYPES = ["testimonial", "work", "post"];
+
 export async function saveContentItemAction(params: {
   type: string;
   slug: string;
@@ -1525,8 +1660,25 @@ export async function saveContentItemAction(params: {
   status: string;
   seoTitle?: string;
   seoDesc?: string;
-}): Promise<{ success?: boolean; anonymized?: boolean; error?: string }> {
+}): Promise<{ success?: boolean; anonymized?: boolean; error?: string; submittedForReview?: boolean }> {
   const staff = await requireStaffUser("content:write");
+
+  // Drafts only without content:publish: they can create and edit drafts (or submit
+  // them for review), but cannot change what's live or touch other content types.
+  const canPublish = can(staff, "content:publish");
+  if (!canPublish) {
+    if (!DRAFTABLE_CONTENT_TYPES.includes(params.type)) {
+      return { error: "You can draft testimonials, case studies and blog posts. Ask an admin to change this content." };
+    }
+    if (params.status !== "DRAFT" && params.status !== "IN_REVIEW") {
+      return { error: "Save this as a draft or submit it for review. Only an admin can publish." };
+    }
+    const live = await query<{ status: string }>("SELECT status FROM content_items WHERE type = $1 AND slug = $2", [params.type, params.slug]);
+    const current = live.rows[0]?.status;
+    if (current && current !== "DRAFT" && current !== "IN_REVIEW") {
+      return { error: "This item is live (or scheduled). Only an admin can change it; create a new draft instead." };
+    }
+  }
 
   let sanitizedContent = params.content || {};
 
@@ -1610,7 +1762,19 @@ export async function saveContentItemAction(params: {
     revalidatePath("/");
   } catch {}
 
-  return { success: true, anonymized: Boolean(sanitizedContent.originalClientAttempted) };
+  if (!canPublish && params.status === "IN_REVIEW") {
+    await notifyOwners(
+      {
+        type: "UPDATE",
+        title: `Ready to publish: ${params.title}`.slice(0, 250),
+        description: `${staff.name} submitted a ${params.type} draft for review.`,
+        targetHref: adminPath(params.type === "work" ? "/work" : params.type === "testimonial" ? "/testimonials" : "/blog")
+      },
+      { excludeUserId: staff.id }
+    );
+  }
+
+  return { success: true, anonymized: Boolean(sanitizedContent.originalClientAttempted), submittedForReview: !canPublish && params.status === "IN_REVIEW" };
 }
 
 export async function checkContentInUseAction(type: string, slug: string) {
@@ -1680,7 +1844,7 @@ export async function checkContentInUseAction(type: string, slug: string) {
 }
 
 export async function archiveContentItemAction(type: string, slug: string): Promise<{ success?: boolean; error?: string }> {
-  const staff = await requireStaffUser("content:write");
+  const staff = await requireStaffUser("content:publish");
 
   await query(
     `UPDATE content_items SET status = 'ARCHIVED', updated_at = NOW(), updated_by_id = $1
@@ -1706,7 +1870,7 @@ export async function archiveContentItemAction(type: string, slug: string): Prom
 }
 
 export async function deleteContentItemAction(type: string, slug: string): Promise<{ success?: boolean; error?: string }> {
-  const staff = await requireStaffUser("content:write");
+  const staff = await requireStaffUser("content:delete");
 
   // In-Use Protection Check
   const inUseCheck = await checkContentInUseAction(type, slug);
@@ -1743,7 +1907,7 @@ export async function deleteContentItemAction(type: string, slug: string): Promi
 // 7. Client Impersonation Mode
 // ==========================================
 export async function startImpersonationAction(orgId: string) {
-  const staff = await requireStaffUser("clients:read");
+  const staff = await requireStaffUser("clients:impersonate");
   const cookieStore = await cookies();
 
   // Set read-only impersonation cookie
@@ -1836,7 +2000,7 @@ export async function editClientBillingDetailsAction(orgId: string, params: {
 }
 
 export async function inviteOrgUserAction(orgId: string, email: string, name: string, role: string = "MEMBER") {
-  const staff = await requireStaffUser("clients:write");
+  const staff = await requireStaffUser("clients:invite");
   email = email.trim().toLowerCase();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { error: "Enter a valid email address." };
 
@@ -1925,7 +2089,7 @@ export async function changeOrgUserRoleAction(orgId: string, userId: string, new
 }
 
 export async function deactivateOrgAction(orgId: string) {
-  const staff = await requireStaffUser("clients:write");
+  const staff = await requireStaffUser("clients:archive");
 
   const orgRes = await query("SELECT name FROM organizations WHERE id = $1", [orgId]);
   if (orgRes.rows.length === 0) return { error: "Organization not found" };
@@ -1951,7 +2115,7 @@ export async function deactivateOrgAction(orgId: string) {
 }
 
 export async function reactivateOrgAction(orgId: string) {
-  const staff = await requireStaffUser("clients:write");
+  const staff = await requireStaffUser("clients:archive");
 
   const orgRes = await query("SELECT name FROM organizations WHERE id = $1", [orgId]);
   if (orgRes.rows.length === 0) return { error: "Organization not found" };
@@ -1977,7 +2141,7 @@ export async function reactivateOrgAction(orgId: string) {
 }
 
 export async function deleteOrganizationAction(orgId: string) {
-  const staff = await requireStaffUser("clients:write");
+  const staff = await requireStaffUser("clients:archive");
 
   const orgRes = await query("SELECT id, name FROM organizations WHERE id = $1", [orgId]);
   if (orgRes.rows.length === 0) return { error: "Organization not found" };
@@ -2035,7 +2199,7 @@ export async function resendClientPortalInviteAction(params: {
   name?: string;
   role?: string;
 }) {
-  const staff = await requireStaffUser("clients:write");
+  const staff = await requireStaffUser("clients:invite");
   const access = await sendAccessEmail({ email: params.email, area: "portal", name: params.name, invitedById: staff.id });
 
   await logAdminAudit({
@@ -2272,7 +2436,7 @@ export async function addProjectMilestoneAction(projectId: string, params: {
   description: string;
   dueDate?: string;
 }) {
-  const staff = await requireStaffUser("projects:write");
+  const staff = await requireStaffUser("milestones:write");
 
   const orderRes = await query("SELECT COALESCE(MAX(order_num), 0) + 1 AS next_order FROM milestones WHERE project_id = $1", [projectId]);
   const nextOrder = orderRes.rows[0]?.next_order || 1;
@@ -2313,7 +2477,7 @@ export async function addProjectMilestoneAction(projectId: string, params: {
 }
 
 export async function updateProjectMilestoneStatusAction(milestoneId: string, status: string, comment?: string) {
-  const staff = await requireStaffUser("projects:write");
+  const staff = await requireStaffUser("milestones:write");
 
   const mRes = await query("SELECT project_id, title FROM milestones WHERE id = $1", [milestoneId]);
   if (mRes.rows.length === 0) return { error: "Milestone not found" };
@@ -2412,7 +2576,7 @@ export async function postProjectUpdateAction(projectId: string, params: {
   body: string;
   isPinned?: boolean;
 }) {
-  const staff = await requireStaffUser("projects:write");
+  const staff = await requireStaffUser("updates:post");
 
   await query(
     `INSERT INTO project_updates (project_id, author_id, author_name, title, body, is_pinned, created_at)
@@ -2511,7 +2675,9 @@ export async function createProjectProposalAction(projectId: string, params: {
   amountKes: number;
   fileUrl?: string;
 }) {
-  const staff = await requireStaffUser("projects:write");
+  const staff = await requireStaffUser("proposals:write");
+  // A new proposal shows in the client portal straight away, so this is a send.
+  if (!can(staff, "proposals:send")) return { error: "Sending proposals to clients needs the proposals:send permission." };
 
   const projRes = await query("SELECT org_id FROM projects WHERE id = $1", [projectId]);
   const orgId = projRes.rows[0]?.org_id;
@@ -2553,7 +2719,7 @@ export async function createProjectProposalAction(projectId: string, params: {
 // 8. Backups & Disaster Recovery Actions
 // ==========================================
 export async function triggerBackupSnapshotAction() {
-  const staff = await requireStaffUser("system:manage");
+  const staff = await requireStaffUser("backups:export");
 
   const timestamp = new Date().toISOString().replace(/[-:T.]/g, "").slice(0, 14);
   const filename = `sirotech_db_manual_${timestamp}.sql.gz.enc`;
@@ -2639,7 +2805,7 @@ export async function uploadMediaAction(params: {
 }
 
 export async function deleteMediaAction(key: string): Promise<{ success?: boolean; error?: string }> {
-  const staff = await requireStaffUser("media:write");
+  const staff = await requireStaffUser("content:delete");
 
   const usageCheck = await query(
     `SELECT title, type FROM content_items WHERE content::text LIKE '%' || $1 || '%' AND deleted_at IS NULL`,
@@ -2671,7 +2837,7 @@ export async function deleteMediaAction(key: string): Promise<{ success?: boolea
 // 11. Navigation & Menu Editor
 // ==========================================
 export async function saveMenuAction(key: string, items: any[]): Promise<{ success?: boolean; error?: string }> {
-  const staff = await requireStaffUser("nav:write");
+  const staff = await requireStaffUser("navigation:write");
 
   await query(
     `INSERT INTO menus (key, items, updated_at)
@@ -2703,7 +2869,7 @@ export async function createRedirectAction(params: {
   toPath: string;
   code: number;
 }): Promise<{ success?: boolean; error?: string }> {
-  const staff = await requireStaffUser("redirects:write");
+  const staff = await requireStaffUser("seo:write");
 
   const from = params.fromPath.trim();
   const to = params.toPath.trim();
@@ -2742,7 +2908,7 @@ export async function createRedirectAction(params: {
 }
 
 export async function deleteRedirectAction(id: string): Promise<{ success?: boolean; error?: string }> {
-  const staff = await requireStaffUser("redirects:write");
+  const staff = await requireStaffUser("seo:write");
 
   await query("DELETE FROM redirects WHERE id = $1", [id]);
 
@@ -2761,14 +2927,27 @@ export async function deleteRedirectAction(id: string): Promise<{ success?: bool
 // ==========================================
 // 13. Users & Access Management
 // ==========================================
+const LEGACY_ROLE_FOR_PRESET: Record<PresetKey, string> = {
+  admin: "ADMIN",
+  client_manager: "MANAGER",
+  delivery_lead: "MANAGER",
+  finance: "FINANCE",
+  editor: "EDITOR",
+  support: "SUPPORT"
+};
+
 export async function inviteStaffUserAction(params: {
   name: string;
   email: string;
-  staffRole: "ADMIN" | "MANAGER" | "EDITOR" | "SUPPORT" | "FINANCE";
+  preset: string;
 }): Promise<{ success?: boolean; error?: string; message?: string; userId?: string; retryAfterSeconds?: number }> {
-  const staff = await requireStaffUser("users:manage");
+  const staff = await requireStaffUser("staff:write");
   const email = params.email.toLowerCase().trim();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { error: "Enter a valid email address." };
+  if (!isPresetKey(params.preset)) return { error: "Pick a role preset." };
+  const preset = params.preset;
+  if (preset === "admin" && !staff.isOwner) return { error: "Only an owner can invite another admin." };
+  const legacyRole = LEGACY_ROLE_FOR_PRESET[preset];
 
   // 1. Profile first: role + permission preset
   const existing = await query<{ id: string; role: string }>("SELECT id, role FROM users WHERE LOWER(email) = $1", [email]);
@@ -2778,12 +2957,16 @@ export async function inviteStaffUserAction(params: {
       return { error: "This email belongs to a client account. Use a separate staff email address." };
     }
     userId = existing.rows[0].id;
-    await query("UPDATE users SET staff_role = $1, active = true WHERE id = $2", [params.staffRole, userId]);
+    await query(
+      "UPDATE users SET staff_role = $1, staff_preset = $2, staff_permissions = '{}', totp_required = true, active = true WHERE id = $3",
+      [legacyRole, preset, userId]
+    );
   } else {
+    // Always STAFF: owners are marked by the admin preset, never by handing out ADMIN to avoid permission errors.
     const ins = await query<{ id: string }>(
-      `INSERT INTO users (name, email, role, staff_role, totp_required, active, invited_by_id, created_at)
-       VALUES ($1, $2, $3, $4, true, true, $5, NOW()) RETURNING id`,
-      [params.name.trim(), email, "STAFF", params.staffRole, staff.id]
+      `INSERT INTO users (name, email, role, staff_role, staff_preset, staff_permissions, totp_required, active, invited_by_id, created_at)
+       VALUES ($1, $2, 'STAFF', $3, $4, '{}', true, true, $5, NOW()) RETURNING id`,
+      [params.name.trim(), email, legacyRole, preset, staff.id]
     );
     userId = ins.rows[0].id;
   }
@@ -2797,7 +2980,7 @@ export async function inviteStaffUserAction(params: {
     action: "STAFF_INVITED",
     entity: "user",
     entityId: userId,
-    metadata: { email, role: params.staffRole, result: access.ok ? access.kind : access.error }
+    metadata: { email, preset, result: access.ok ? access.kind : access.error }
   });
 
   revalidatePath("/admin/users");
@@ -2814,8 +2997,7 @@ export async function resendAccessAction(userId: string): Promise<{ success?: bo
   const target = u.rows[0];
   if (!target) return { error: "User not found" };
   const isStaffTarget = target.role !== "CLIENT";
-  const { hasPermission } = await import("@/lib/admin-permissions-client");
-  if (!hasPermission(staff.staffRole, isStaffTarget ? "users:manage" : "clients:write")) return { error: "You don't have permission to do that." };
+  if (!can(staff, isStaffTarget ? "staff:write" : "clients:invite")) return { error: "You don't have permission to do that." };
 
   const access = await sendAccessEmail({ email: target.email, area: isStaffTarget ? "admin" : "portal", name: target.name, invitedById: staff.id });
   await logAdminAudit({
@@ -2831,13 +3013,12 @@ export async function resendAccessAction(userId: string): Promise<{ success?: bo
   return { success: true, message: access.kind === "invite" ? "Invite sent" : "Sign-in link sent" };
 }
 
-/** Staff targets need users:manage; client targets need clients:write. */
+/** Staff targets need staff:write; client targets need clients:write. */
 async function requireAccessManager(userId: string) {
   const staff = await requireStaffUser();
   const t = await query<{ role: string }>("SELECT role FROM users WHERE id = $1", [userId]);
-  const { hasPermission } = await import("@/lib/admin-permissions-client");
-  const needed = t.rows[0]?.role === "CLIENT" ? "clients:write" : "users:manage";
-  return { staff, allowed: Boolean(t.rows[0]) && hasPermission(staff.staffRole, needed) };
+  const needed = t.rows[0]?.role === "CLIENT" ? "clients:write" : "staff:write";
+  return { staff, allowed: Boolean(t.rows[0]) && can(staff, needed) };
 }
 
 export async function revokeAccessAction(userId: string): Promise<{ success?: boolean; error?: string; deleted?: boolean }> {
@@ -2862,8 +3043,8 @@ export async function setAccountActiveAction(userId: string, active: boolean): P
 
 /** Clear a staff member's authenticator (admin only, audited). They set it up again on next sign-in. */
 export async function resetTwoStepAction(userId: string): Promise<{ success?: boolean; error?: string }> {
-  const staff = await requireStaffUser("users:manage");
-  if (staff.staffRole !== "ADMIN") return { error: "Only admins can reset two-step sign-in." };
+  const staff = await requireStaffUser("staff:write");
+  if (!staff.isOwner) return { error: "Only an owner can reset two-step sign-in." };
   await resetTwoStep(userId, staff.id);
   await logAdminAudit({ userId: staff.id, userName: staff.name, action: "STAFF_TWO_STEP_RESET", entity: "user", entityId: userId });
   revalidatePath("/admin/users");
@@ -2872,7 +3053,7 @@ export async function resetTwoStepAction(userId: string): Promise<{ success?: bo
 
 /** Lead emails (team notification / auto-reply) failed: retry now from the lead page. */
 export async function retryLeadEmailsAction(leadId: string): Promise<{ success?: boolean; error?: string }> {
-  await requireStaffUser("leads:read");
+  await requireStaffUser("leads:write");
   const { processLeadEmails } = await import("@/lib/lead-emails");
   const r = await processLeadEmails(leadId);
   revalidatePath(`/admin/leads/${leadId}`);
@@ -2880,26 +3061,64 @@ export async function retryLeadEmailsAction(leadId: string): Promise<{ success?:
   return r.error ? { error: r.error } : { success: true };
 }
 
-export async function changeStaffRoleAction(userId: string, newRole: string): Promise<{ success?: boolean; error?: string }> {
-  const staff = await requireStaffUser("users:manage");
+/**
+ * Permission editor save: preset plus per-person overrides ("perm" allows, "!perm" denies).
+ * Owner only. Audited with before and after.
+ */
+export async function setStaffAccessAction(
+  userId: string,
+  params: { preset: string; overrides: string[] }
+): Promise<{ success?: boolean; error?: string; effective?: string[] }> {
+  const staff = await requireStaffUser("staff:write");
+  if (!staff.isOwner) return { error: "Only an owner can change staff permissions." };
+  if (!isPresetKey(params.preset)) return { error: "Unknown preset." };
+  const preset = params.preset;
+  const overrides = preset === "admin" ? [] : sanitizeOverrides(params.overrides);
 
-  await query("UPDATE users SET staff_role = $1 WHERE id = $2", [newRole, userId]);
+  const cur = await query<{ id: string; role: string; staff_role: string | null; staff_preset: string | null; staff_permissions: string[] | null }>(
+    "SELECT id, role, staff_role, staff_preset, staff_permissions FROM users WHERE id = $1",
+    [userId]
+  );
+  const target = cur.rows[0];
+  if (!target || target.role === "CLIENT") return { error: "Staff member not found." };
 
+  const { resolvePreset } = await import("@/lib/admin-permissions");
+  const beforePreset = resolvePreset(target, target.role);
+  if (beforePreset === "admin" && preset !== "admin") {
+    if (userId === staff.id) return { error: "You can't remove your own owner access." };
+    const owners = await getOwnerIds();
+    if (owners.filter((o) => o.id !== userId).length === 0) return { error: "There must always be at least one owner." };
+  }
+
+  await query(
+    "UPDATE users SET staff_preset = $1, staff_permissions = $2, staff_role = $3, updated_at = NOW() WHERE id = $4",
+    [preset, overrides, LEGACY_ROLE_FOR_PRESET[preset], userId]
+  );
+
+  const effective = effectivePermissions({ preset, overrides, isOwner: preset === "admin" });
   await logAdminAudit({
     userId: staff.id,
     userName: staff.name,
-    action: "STAFF_ROLE_CHANGED",
+    action: "STAFF_PERMISSIONS_CHANGED",
     entity: "user",
     entityId: userId,
-    metadata: { newRole }
+    before: { preset: beforePreset, overrides: target.staff_permissions || [] },
+    after: { preset, overrides },
+    metadata: { effectiveCount: effective.length }
   });
 
   revalidatePath("/admin/users");
-  return { success: true };
+  return { success: true, effective };
+}
+
+/** Kept for older callers: change only the preset, clearing overrides. */
+export async function changeStaffRoleAction(userId: string, newPreset: string): Promise<{ success?: boolean; error?: string }> {
+  const res = await setStaffAccessAction(userId, { preset: newPreset, overrides: [] });
+  return res.error ? { error: res.error } : { success: true };
 }
 
 export async function revokeStaffSessionsAction(userId: string): Promise<{ success?: boolean; error?: string }> {
-  const staff = await requireStaffUser("users:manage");
+  const staff = await requireStaffUser("staff:write");
 
   await query("UPDATE users SET token_version = token_version + 1 WHERE id = $1", [userId]);
 
@@ -2919,7 +3138,7 @@ export async function revokeStaffSessionsAction(userId: string): Promise<{ succe
 // 14. Webhook Monitoring & Replay
 // ==========================================
 export async function replayWebhookAction(webhookId: string): Promise<{ success?: boolean; error?: string }> {
-  const staff = await requireStaffUser("system:manage");
+  const staff = await requireStaffUser("integrations:write");
 
   await query(
     `UPDATE webhook_events 
@@ -2948,7 +3167,7 @@ export async function processPrivacyRequestAction(
   action: "EXPORT" | "ANONYMIZE" | "REJECT",
   rejectionReason?: string
 ): Promise<{ success?: boolean; downloadUrl?: string; error?: string; retentionNotice?: string }> {
-  const staff = await requireStaffUser("privacy:manage");
+  const staff = await requireStaffUser("privacy:write");
 
   const reqRes = await query("SELECT * FROM privacy_requests WHERE id = $1", [requestId]);
   if (reqRes.rows.length === 0) return { error: "Privacy request not found" };
@@ -3078,7 +3297,7 @@ export async function createInboundPrivacyRequestAction(params: {
   channel: "EMAIL" | "PORTAL" | "MANUAL";
   notes?: string;
 }): Promise<{ success?: boolean; error?: string; requestId?: string }> {
-  const staff = await requireStaffUser("privacy:manage");
+  const staff = await requireStaffUser("privacy:write");
   const cleanEmail = params.email.trim().toLowerCase();
 
   if (!cleanEmail || !cleanEmail.includes("@")) {
@@ -3345,7 +3564,7 @@ export async function updateEmailTemplateAction(params: {
   subject: string;
   body: string;
 }): Promise<{ success: boolean; error?: string }> {
-  const staff = await requireStaffUser("system:write");
+  const staff = await requireStaffUser("emails:write");
 
   // Validate that only allowed variables are used
   const tplDef = getTemplateDefinition(params.key);
@@ -3403,7 +3622,7 @@ export async function resetEmailTemplateAction(key: string): Promise<{
   body?: string;
   error?: string;
 }> {
-  const staff = await requireStaffUser("system:write");
+  const staff = await requireStaffUser("emails:write");
 
   const tplDef = getTemplateDefinition(key);
   if (!tplDef) {
@@ -3440,7 +3659,7 @@ export async function sendTestEmailAction(params: {
   customSubject?: string;
   customBody?: string;
 }): Promise<{ success: boolean; messageId?: string; error?: string }> {
-  const staff = await requireStaffUser("system:write");
+  const staff = await requireStaffUser("emails:write");
 
   const res = await sendEmailWithLog({
     templateKey: params.templateKey,
@@ -3472,7 +3691,7 @@ export async function previewEmailAction(params: {
   customBody?: string;
   sampleData?: Record<string, any>;
 }): Promise<{ success: boolean; html?: string; text?: string; subject?: string; error?: string }> {
-  await requireStaffUser("system:read");
+  await requireStaffUser("emails:write");
 
   try {
     const { renderEmail } = await import("@/lib/email-templates/renderer");
@@ -3494,7 +3713,7 @@ export async function previewEmailAction(params: {
 }
 
 export async function retryEmailLogAction(logId: string): Promise<{ success: boolean; error?: string }> {
-  const staff = await requireStaffUser("system:write");
+  const staff = await requireStaffUser("emails:write");
 
   const logRes = await query("SELECT * FROM email_logs WHERE id = $1", [logId]);
   if (logRes.rows.length === 0) return { success: false, error: "Log record not found" };
@@ -3526,7 +3745,7 @@ export async function retryEmailLogAction(logId: string): Promise<{ success: boo
 // 18. System Health, Backups & Disaster Recovery
 // ==========================================
 export async function triggerSystemBackupAction(): Promise<{ success: boolean; backup?: any; error?: string }> {
-  const staff = await requireStaffUser("system:write");
+  const staff = await requireStaffUser("backups:export");
 
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
   const filename = `sirotech-db-snapshot-${timestamp}.pgdump.enc`;
@@ -3559,7 +3778,7 @@ export async function exportAllDataAction(): Promise<{
   data?: any;
   error?: string;
 }> {
-  const staff = await requireStaffUser("privacy:manage");
+  const staff = await requireStaffUser("backups:export");
 
   const [
     orgs,
@@ -3631,7 +3850,7 @@ export async function exportAllDataAction(): Promise<{
 // 27. Google Analytics 4 Telemetry Actions
 // ==========================================
 export async function getGoogleAnalyticsReportAction(forceRefresh: boolean = false) {
-  await requireStaffUser("reports:read");
+  await requireStaffUser("analytics:read");
   try {
     const report = await getGoogleAnalyticsReport(forceRefresh);
     return { success: true, data: report };
@@ -3646,7 +3865,7 @@ export async function saveGoogleAnalyticsConfigAction(params: {
   clientEmail?: string;
   privateKey?: string;
 }) {
-  const staff = await requireStaffUser("settings:write");
+  const staff = await requireStaffUser("integrations:write");
 
   const cleanPropertyId = params.propertyId.trim().replace(/^properties\//, "");
   if (!cleanPropertyId) {
@@ -3703,7 +3922,7 @@ export async function saveGoogleAnalyticsConfigAction(params: {
 }
 
 export async function testGoogleAnalyticsConnectionAction() {
-  await requireStaffUser("reports:read");
+  await requireStaffUser("integrations:read");
   const report = await getGoogleAnalyticsReport(true);
   return {
     success: !report.error && report.isConfigured,
@@ -3717,7 +3936,7 @@ export async function testGoogleAnalyticsConnectionAction() {
 // ==========================================
 
 export async function getPaystackConfigAction() {
-  await requireStaffUser("system:read");
+  await requireStaffUser("integrations:read");
   const { getPaystackConfig } = await import("@/lib/paystack");
   const config = await getPaystackConfig(true);
 
@@ -3740,7 +3959,7 @@ export async function savePaystackConfigAction(params: {
   publicKey: string;
   webhookSecret?: string;
 }) {
-  const staff = await requireStaffUser("settings:write");
+  const staff = await requireStaffUser("integrations:write");
 
   const cleanSecret = (params.secretKey || "").trim();
   const cleanPublic = (params.publicKey || "").trim();
@@ -3799,13 +4018,13 @@ export async function savePaystackConfigAction(params: {
 }
 
 export async function testPaystackConnectionAction(secretKeyOverride?: string) {
-  await requireStaffUser("system:read");
+  await requireStaffUser("integrations:read");
   const { testPaystackConnection } = await import("@/lib/paystack");
   return testPaystackConnection(secretKeyOverride);
 }
 
 export async function generatePaystackInvoiceLinkAction(invoiceId: string) {
-  const staff = await requireStaffUser("invoices:read");
+  const staff = await requireStaffUser("invoices:send");
 
   const invRes = await query(
     `SELECT inv.*, o.name AS org_name 
@@ -3875,4 +4094,118 @@ export async function generatePaystackInvoiceLinkAction(invoiceId: string) {
     authorizationUrl: initResult.authorizationUrl,
     reference,
   };
+}
+
+// ==========================================
+// 16. Hand-offs between client management and delivery
+// ==========================================
+function projectSlugFor(name: string) {
+  const raw = name.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  return `${raw || "project"}-${Date.now().toString(36)}`;
+}
+
+/**
+ * Client manager -> delivery: a project in REQUESTED status with the brief.
+ * Only holders of projects:write can move it forward. Owners are notified and it
+ * appears under "Awaiting scoping" on the Overview.
+ */
+export async function createProjectRequestAction(params: {
+  orgId: string;
+  title: string;
+  brief: string;
+  budgetKes?: number;
+  deadline?: string;
+  leadId?: string;
+}): Promise<{ success?: boolean; error?: string; projectId?: string }> {
+  const staff = await requireStaffUser("projects:create");
+  const title = (params.title || "").trim();
+  const brief = (params.brief || "").trim();
+  if (title.length < 3) return { error: "Give the project a name." };
+  if (brief.length < 20) return { error: "Add a brief (at least a couple of sentences) so delivery can scope it." };
+  const budget = params.budgetKes != null && Number.isFinite(Number(params.budgetKes)) ? Math.max(0, Math.round(Number(params.budgetKes))) : null;
+  const deadline = params.deadline && /^\d{4}-\d{2}-\d{2}$/.test(params.deadline) ? params.deadline : null;
+
+  const org = await query<{ id: string; name: string }>("SELECT id, name FROM organizations WHERE id = $1", [params.orgId]);
+  if (!org.rows[0]) return { error: "Client organisation not found." };
+
+  const startDate = new Date().toISOString().split("T")[0];
+  const target = deadline || new Date(Date.now() + 60 * 86400000).toISOString().split("T")[0];
+  const res = await query<{ id: string }>(
+    `INSERT INTO projects (slug, org_id, title, summary, status, progress, start_date, target_launch, brief, budget_kes, requested_by_id, created_at, updated_at)
+     VALUES ($1, $2, $3, $4, 'REQUESTED', 0, $5, $6, $7, $8, $9, NOW(), NOW())
+     RETURNING id`,
+    [projectSlugFor(title), params.orgId, title, brief.slice(0, 280), startDate, target, brief, budget, staff.id]
+  );
+  const projectId = res.rows[0].id;
+
+  await logAdminAudit({
+    orgId: params.orgId,
+    userId: staff.id,
+    userName: staff.name,
+    action: "PROJECT_REQUESTED",
+    entity: "project",
+    entityId: projectId,
+    metadata: { title, budgetKes: budget, deadline, leadId: params.leadId || null }
+  });
+  await notifyOwners(
+    {
+      type: "UPDATE",
+      title: `Project request: ${title}`.slice(0, 250),
+      description: `${staff.name} requested a project for ${org.rows[0].name}${budget ? ` (budget KES ${budget.toLocaleString()})` : ""}. It's waiting for you to scope it.`,
+      targetHref: adminPath(`/projects/${projectId}`)
+    },
+    { excludeUserId: staff.id, email: true }
+  );
+
+  revalidatePath("/admin/projects");
+  revalidatePath("/admin");
+  revalidatePath(`/admin/clients/${params.orgId}`);
+  return { success: true, projectId };
+}
+
+/** Delivery accepts a request: it becomes a PLANNING project, visible in the client portal. */
+export async function acceptProjectRequestAction(projectId: string): Promise<{ success?: boolean; error?: string }> {
+  const staff = await requireStaffUser("projects:write");
+  const p = await query<{ status: string; title: string; requested_by_id: string | null; org_id: string }>(
+    "SELECT status::text AS status, title, requested_by_id, org_id FROM projects WHERE id = $1",
+    [projectId]
+  );
+  const proj = p.rows[0];
+  if (!proj) return { error: "Project not found." };
+  if (proj.status !== "REQUESTED") return { error: "This project has already been accepted." };
+
+  await query("UPDATE projects SET status = 'PLANNING', updated_at = NOW() WHERE id = $1", [projectId]);
+  await logAdminAudit({ orgId: proj.org_id, userId: staff.id, userName: staff.name, action: "PROJECT_REQUEST_ACCEPTED", entity: "project", entityId: projectId });
+  if (proj.requested_by_id && proj.requested_by_id !== staff.id) {
+    await notifyUser(proj.requested_by_id, proj.org_id, {
+      type: "UPDATE",
+      title: `Accepted: ${proj.title}`.slice(0, 250),
+      description: `${staff.name} accepted the request and is planning it. Follow progress on the project page.`,
+      targetHref: adminPath(`/projects/${projectId}`)
+    });
+  }
+  revalidatePath(`/admin/projects/${projectId}`);
+  revalidatePath("/admin/projects");
+  revalidatePath("/admin");
+  return { success: true };
+}
+
+/** Delivery's private notes on a project (projects:internal). */
+export async function saveDeliveryNotesAction(projectId: string, notes: string): Promise<{ success?: boolean; error?: string }> {
+  const staff = await requireStaffUser("projects:internal");
+  const text = (notes || "").slice(0, 20000);
+  await query("UPDATE projects SET delivery_notes = $1, updated_at = NOW() WHERE id = $2", [text || null, projectId]);
+  await logAdminAudit({ userId: staff.id, userName: staff.name, action: "DELIVERY_NOTES_UPDATED", entity: "project", entityId: projectId, metadata: { length: text.length } });
+  revalidatePath(`/admin/projects/${projectId}`);
+  return { success: true };
+}
+
+/** The client manager's private account notes on an organisation (clients:internal). */
+export async function saveAccountNotesAction(orgId: string, notes: string): Promise<{ success?: boolean; error?: string }> {
+  const staff = await requireStaffUser("clients:internal");
+  const text = (notes || "").slice(0, 20000);
+  await query("UPDATE organizations SET account_notes = $1, updated_at = NOW() WHERE id = $2", [text || null, orgId]);
+  await logAdminAudit({ orgId, userId: staff.id, userName: staff.name, action: "ACCOUNT_NOTES_UPDATED", entity: "organization", entityId: orgId, metadata: { length: text.length } });
+  revalidatePath(`/admin/clients/${orgId}`);
+  return { success: true };
 }

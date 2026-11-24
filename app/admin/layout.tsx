@@ -20,7 +20,17 @@ export default async function AdminLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const staff = await requireStaffUser();
+  // Pages enforce two-step themselves; the layout must also render the profile setup page.
+  const staff = await requireStaffUser(undefined, { allowWithoutTwoStep: true });
+  const shellUser = {
+    id: staff.id,
+    name: staff.name,
+    email: staff.email,
+    preset: staff.preset,
+    overrides: staff.overrides,
+    isOwner: staff.isOwner,
+    setupPending: !staff.isOwner && !staff.totpEnabled
+  };
 
   // Check for impersonation cookie
   const cookieStore = await cookies();
@@ -37,7 +47,7 @@ export default async function AdminLayout({
   }
 
   return (
-    <AdminShell user={staff} impersonatedOrgName={impersonatedOrgName}>
+    <AdminShell user={shellUser} impersonatedOrgName={impersonatedOrgName}>
       <AdminAutoSync intervalMs={25000} />
       {children}
     </AdminShell>

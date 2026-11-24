@@ -1137,6 +1137,10 @@ export async function getAdminAssistantData() {
 // ==========================================
 export async function getAdminStaffUsers() {
   try {
+    // staff_preset / staff_permissions arrive with scripts/migrate-staff-permissions.js
+    const hasPresetCols = await query(
+      `SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'staff_preset' LIMIT 1`
+    ).then((r) => r.rows.length > 0).catch(() => false);
     const res = await query(`
       SELECT 
         u.id, 
@@ -1144,7 +1148,8 @@ export async function getAdminStaffUsers() {
         u.email, 
         u.role, 
         u.staff_role, 
-        u.totp_enabled, 
+        ${hasPresetCols ? "u.staff_preset, u.staff_permissions," : "NULL::text AS staff_preset, NULL::text[] AS staff_permissions,"}
+        u.totp_enabled,
         COALESCE(u.last_login_at, (SELECT MAX(last_active) FROM staff_sessions WHERE user_id = u.id)) AS last_login_at,
         u.created_at, u.active, u.accepted_at, u.invited_at, u.last_access_email_at
       FROM users u

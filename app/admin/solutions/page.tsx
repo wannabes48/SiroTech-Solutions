@@ -5,7 +5,7 @@ import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { ContentListManager } from "@/components/admin/content/ContentListManager";
 
 export default async function AdminSolutionsPage() {
-  await requireStaffUser("content:read");
+  await requireStaffUser("content:publish");
   const solutions = await getAdminContentList("solution");
 
   return (

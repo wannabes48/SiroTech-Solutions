@@ -5,7 +5,7 @@ import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { HomeEditorClient } from "./HomeEditorClient";
 
 export default async function AdminHomePage() {
-  await requireStaffUser("content:read");
+  await requireStaffUser("content:publish");
   const settings = await getAdminSiteSettings();
 
   return (

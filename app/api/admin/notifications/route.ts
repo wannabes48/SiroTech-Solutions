@@ -1,6 +1,7 @@
 import { adminPath } from "@/lib/hosts";
 import { NextRequest, NextResponse } from "next/server";
-import { requireStaffUser } from "@/lib/admin-permissions";
+import { requireStaffUser, can } from "@/lib/admin-permissions";
+import { unstable_rethrow } from "next/navigation";
 import { query } from "@/lib/db";
 
 export async function GET() {
@@ -78,7 +79,7 @@ export async function GET() {
     const operationalNotifs: any[] = [];
 
     // Tickets
-    ticketsRes.rows.forEach((t: any) => {
+    (can(staff, "tickets:read") ? ticketsRes.rows : []).forEach((t: any) => {
       const itemId = `ticket-${t.id}`;
       operationalNotifs.push({
         id: itemId,
@@ -93,7 +94,7 @@ export async function GET() {
     });
 
     // Consultations
-    consultsRes.rows.forEach((c: any) => {
+    (can(staff, "consultations:read") ? consultsRes.rows : []).forEach((c: any) => {
       const itemId = `consult-${c.id}`;
       const dateStr = c.scheduled_at
         ? new Date(c.scheduled_at).toLocaleDateString("en-US", {
@@ -116,7 +117,7 @@ export async function GET() {
     });
 
     // Payments
-    paymentsRes.rows.forEach((p: any) => {
+    (can(staff, "payments:read") ? paymentsRes.rows : []).forEach((p: any) => {
       const itemId = `pay-${p.id}`;
       const amountStr = Number(p.amount_kes || 0).toLocaleString();
       operationalNotifs.push({
@@ -132,7 +133,7 @@ export async function GET() {
     });
 
     // Leads
-    leadsRes.rows.forEach((l: any) => {
+    (can(staff, "leads:read") ? leadsRes.rows : []).forEach((l: any) => {
       const itemId = `lead-${l.id}`;
       const val = Number(l.value || 0);
       const valStr = val > 0 ? ` • Est. KES ${val.toLocaleString()}` : "";
@@ -149,7 +150,7 @@ export async function GET() {
     });
 
     // Milestones
-    milestonesRes.rows.forEach((m: any) => {
+    (can(staff, "projects:read") ? milestonesRes.rows : []).forEach((m: any) => {
       const itemId = `milestone-${m.id}`;
       operationalNotifs.push({
         id: itemId,
@@ -185,9 +186,7 @@ export async function GET() {
       unreadCount: allNotifs.filter((n) => !n.read).length,
     });
   } catch (error: any) {
-    if (error?.digest === "NEXT_NOT_FOUND" || error?.message?.includes("Forbidden")) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    unstable_rethrow(error);
     console.error("[Admin Notifications GET Error]", error);
     return NextResponse.json({ notifications: [], unreadCount: 0 });
   }
@@ -246,9 +245,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ error: "Invalid action" }, { status: 400 });
   } catch (error: any) {
-    if (error?.digest === "NEXT_NOT_FOUND" || error?.message?.includes("Forbidden")) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    unstable_rethrow(error);
     console.error("[Admin Notifications POST Error]", error);
     return NextResponse.json({ error: "Failed to update notification status" }, { status: 500 });
   }

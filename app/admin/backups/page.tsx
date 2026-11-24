@@ -6,7 +6,7 @@ import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { AdminBackupsClient } from "./AdminBackupsClient";
 
 export default async function AdminBackupsPage() {
-  await requireStaffUser("system:read");
+  await requireStaffUser("backups:export");
   const backups = await getAdminBackups();
 
   return (

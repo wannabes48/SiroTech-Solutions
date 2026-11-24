@@ -39,12 +39,17 @@ export function ContentListManager({
   type,
   typeName,
   items: initialItems,
-  createHref
+  createHref,
+  canPublish = true,
+  canDelete = true
 }: {
   type: string;
   typeName: string;
   items: ContentItemRow[];
   createHref?: string;
+  /** false = drafts only: new items start as drafts and live items are read-only. The server enforces this too. */
+  canPublish?: boolean;
+  canDelete?: boolean;
 }) {
   const [items, setItems] = useState<ContentItemRow[]>(initialItems);
   const [searchTerm, setSearchTerm] = useState("");
@@ -65,6 +70,7 @@ export function ContentListManager({
     title: string;
     summary: string;
     status: string;
+    isNew?: boolean;
     client?: string;
     permissionGranted?: boolean;
     serviceSlug?: string;
@@ -125,6 +131,7 @@ export function ContentListManager({
       title: item.title,
       summary: item.summary || "",
       status: item.status || "PUBLISHED",
+      isNew: false,
       client: c.client || "",
       permissionGranted: c.permissionGranted !== undefined ? Boolean(c.permissionGranted) : true,
       serviceSlug: c.serviceSlug || "custom-software",
@@ -137,6 +144,13 @@ export function ContentListManager({
     });
     setEditModalOpen(true);
   };
+
+  const handleOpenNew = () => {
+    setEditingItem({ slug: "", title: "", summary: "", status: "DRAFT", isNew: true, permissionGranted: false });
+    setEditModalOpen(true);
+  };
+
+  const isLocked = (status?: string) => !canPublish && !["DRAFT", "IN_REVIEW"].includes((status || "PUBLISHED").toUpperCase());
 
   const handleSaveItem = (e: React.FormEvent) => {
     e.preventDefault();
@@ -172,10 +186,18 @@ export function ContentListManager({
         if (res.anonymized) {
           showToast(`Saved! Client was anonymized as 'Unnamed multinational' (permission checkbox unchecked).`);
         } else {
-          showToast(`Successfully saved "${editingItem.title}"`);
+          showToast(res.submittedForReview ? `Submitted "${editingItem.title}" for review. An admin will publish it.` : `Successfully saved "${editingItem.title}"`);
         }
 
         // Optimistically update list
+        if (editingItem.isNew) {
+          setItems((prev) => [
+            { type, slug: editingItem.slug, title: editingItem.title, summary: editingItem.summary, status: editingItem.status, content: payloadContent },
+            ...prev
+          ]);
+          setEditModalOpen(false);
+          return;
+        }
         setItems((prev) =>
           prev.map((it) =>
             it.slug === editingItem.slug
@@ -255,10 +277,21 @@ export function ContentListManager({
         </div>
       )}
 
+      {!canPublish && (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900 flex flex-wrap items-center justify-between gap-3">
+          <span>You can write drafts and submit them for review. An admin publishes them; live items are read-only for you.</span>
+          {!createHref && (
+            <button type="button" onClick={handleOpenNew} className="px-3 py-1.5 rounded-full bg-ink text-white font-semibold cursor-pointer">
+              New draft
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Search and Filter Row */}
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
         <div className="flex items-center gap-1.5 overflow-x-auto">
-          {["ALL", "PUBLISHED", "DRAFT", "ARCHIVED"].map((st) => (
+          {["ALL", "PUBLISHED", "DRAFT", "IN_REVIEW", "ARCHIVED"].map((st) => (
             <button
               key={st}
               type="button"
@@ -320,6 +353,8 @@ export function ContentListManager({
                         <button
                           type="button"
                           onClick={() => handleOpenEdit(item)}
+                          disabled={isLocked(item.status)}
+                          title={isLocked(item.status) ? "Live content: only an admin can change it" : undefined}
                           className="px-3 py-1.5 rounded-full text-xs font-semibold bg-surface hover:bg-sage-100 text-ink border border-rule inline-flex items-center gap-1.5 transition cursor-pointer"
                         >
                           <Edit className="w-3.5 h-3.5 text-muted" />
@@ -327,7 +362,7 @@ export function ContentListManager({
                         </button>
 
                         {/* Archive Button */}
-                        {item.status !== "ARCHIVED" && (
+                        {canPublish && item.status !== "ARCHIVED" && (
                           <button
                             type="button"
                             onClick={() => handleArchiveItem(item.slug, item.title)}
@@ -340,6 +375,7 @@ export function ContentListManager({
                         )}
 
                         {/* In-Use Protected Delete Button */}
+                        {canDelete && (
                         <button
                           type="button"
                           onClick={() => handleDeleteClick(item)}
@@ -349,6 +385,7 @@ export function ContentListManager({
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -371,8 +408,19 @@ export function ContentListManager({
           <div className="bg-white rounded-3xl max-w-2xl w-full border border-rule shadow-2xl p-6 space-y-5 animate-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-3 border-b border-rule">
               <div>
-                <h3 className="font-bold text-base text-ink">Edit {typeName.slice(0, -1) || typeName}: {editingItem.title}</h3>
-                <p className="text-xs text-muted">/{editingItem.slug}</p>
+                <h3 className="font-bold text-base text-ink">{editingItem.isNew ? "New" : "Edit"} {typeName.slice(0, -1) || typeName}{editingItem.isNew ? " draft" : `: ${editingItem.title}`}</h3>
+                {editingItem.isNew ? (
+                  <input
+                    type="text"
+                    value={editingItem.slug}
+                    onChange={(e) => setEditingItem({ ...editingItem, slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]+/g, "-") })}
+                    placeholder="url-slug"
+                    className="mt-1 px-2.5 py-1 rounded-lg text-xs bg-surface border border-rule outline-none"
+                    required
+                  />
+                ) : (
+                  <p className="text-xs text-muted">/{editingItem.slug}</p>
+                )}
               </div>
               <button
                 onClick={() => setEditModalOpen(false)}
@@ -402,9 +450,19 @@ export function ContentListManager({
                     onChange={(e) => setEditingItem({ ...editingItem, status: e.target.value })}
                     className="w-full px-3.5 py-2 rounded-xl text-xs bg-surface border border-rule font-medium focus:ring-1 focus:ring-emerald-700 outline-none"
                   >
-                    <option value="PUBLISHED">PUBLISHED</option>
-                    <option value="DRAFT">DRAFT</option>
-                    <option value="ARCHIVED">ARCHIVED</option>
+                    {canPublish ? (
+                      <>
+                        <option value="PUBLISHED">PUBLISHED</option>
+                        <option value="DRAFT">DRAFT</option>
+                        <option value="IN_REVIEW">IN REVIEW</option>
+                        <option value="ARCHIVED">ARCHIVED</option>
+                      </>
+                    ) : (
+                      <>
+                        <option value="DRAFT">DRAFT</option>
+                        <option value="IN_REVIEW">SUBMIT FOR REVIEW</option>
+                      </>
+                    )}
                   </select>
                 </div>
               </div>

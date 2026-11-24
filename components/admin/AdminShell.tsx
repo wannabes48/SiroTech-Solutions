@@ -5,7 +5,7 @@ import React, { useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Logo } from "@/components/brand/Logo";
-import { StaffRole, hasPermission } from "@/lib/admin-permissions-client";
+import { PermissionSubject, PresetKey, PRESETS, can } from "@/lib/admin-permissions-client";
 import { signOutAction } from "@/app/portal/actions";
 import { exitImpersonationAction } from "@/app/admin/actions";
 import { ConfirmDialog } from "@/components/portal/shared/ConfirmDialog";
@@ -75,52 +75,62 @@ const ADMIN_NAVIGATION: NavGroup[] = [
     group: "Overview",
     items: [
       { label: "Dashboard", href: adminPath(), icon: LayoutDashboard },
-      { label: "Tasks & To-Dos", href: adminPath("/tasks"), icon: CheckSquare }
+      { label: "Tasks & To-Dos", href: adminPath("/tasks"), icon: CheckSquare, permission: "dashboard:read" }
     ]
   },
   {
     group: "Sales",
     items: [
       { label: "Leads Pipeline", href: adminPath("/leads"), icon: Users, permission: "leads:read" },
-      { label: "Consultations", href: adminPath("/consultations"), icon: Calendar, permission: "consultations:read" },
-      { label: "Clients & Orgs", href: adminPath("/clients"), icon: Building2, permission: "clients:read" }
+      { label: "Consultations", href: adminPath("/consultations"), icon: Calendar, permission: "consultations:read" }
     ]
   },
   {
-    group: "Delivery",
+    group: "Clients",
     items: [
+      { label: "Clients & Orgs", href: adminPath("/clients"), icon: Building2, permission: "clients:read" },
       { label: "Projects & Sprints", href: adminPath("/projects"), icon: FolderGit2, permission: "projects:read" },
+      { label: "Client Messages", href: adminPath("/messages"), icon: MessageSquare, permission: "messages:read" }
+    ]
+  },
+  {
+    group: "Finance",
+    items: [
       { label: "Invoices & Billing", href: adminPath("/invoices"), icon: Receipt, permission: "invoices:read" },
       { label: "Payment Ledger", href: adminPath("/payments"), icon: CreditCard, permission: "payments:read" },
-      { label: "Recurring & Retainers", href: adminPath("/recurring"), icon: RefreshCw, permission: "invoices:read" },
-      { label: "Support Tickets", href: adminPath("/support"), icon: LifeBuoy, permission: "tickets:read" },
-      { label: "Client Messages", href: adminPath("/messages"), icon: MessageSquare, permission: "messages:read" }
+      { label: "Recurring & Retainers", href: adminPath("/recurring"), icon: RefreshCw, permission: "invoices:read" }
+    ]
+  },
+  {
+    group: "Support",
+    items: [
+      { label: "Support Tickets", href: adminPath("/support"), icon: LifeBuoy, permission: "tickets:read" }
     ]
   },
   {
     group: "Content",
     items: [
-      { label: "Home Sections", href: adminPath("/home"), icon: Home, permission: "content:read" },
-      { label: "Pages & Legal", href: adminPath("/pages"), icon: FileText, permission: "content:read" },
-      { label: "Services", href: adminPath("/services"), icon: Cpu, permission: "content:read" },
-      { label: "Solutions", href: adminPath("/solutions"), icon: Boxes, permission: "content:read" },
-      { label: "Industries", href: adminPath("/industries"), icon: Globe, permission: "content:read" },
+      { label: "Home Sections", href: adminPath("/home"), icon: Home, permission: "content:publish" },
+      { label: "Pages & Legal", href: adminPath("/pages"), icon: FileText, permission: "content:publish" },
+      { label: "Services", href: adminPath("/services"), icon: Cpu, permission: "content:publish" },
+      { label: "Solutions", href: adminPath("/solutions"), icon: Boxes, permission: "content:publish" },
+      { label: "Industries", href: adminPath("/industries"), icon: Globe, permission: "content:publish" },
       { label: "Case Studies", href: adminPath("/work"), icon: Briefcase, permission: "content:read" },
-      { label: "Blog & Articles", href: adminPath("/blog"), icon: BookOpen, permission: "blog:read" },
+      { label: "Blog & Articles", href: adminPath("/blog"), icon: BookOpen, permission: "content:publish" },
       { label: "Testimonials", href: adminPath("/testimonials"), icon: Sparkles, permission: "content:read" },
-      { label: "Team Members", href: adminPath("/team"), icon: Users, permission: "content:read" },
-      { label: "FAQ Manager", href: adminPath("/faq"), icon: HelpCircle, permission: "content:read" },
-      { label: "Pricing Tiers", href: adminPath("/pricing"), icon: DollarSign, permission: "content:read" },
+      { label: "Team Members", href: adminPath("/team"), icon: Users, permission: "content:publish" },
+      { label: "FAQ Manager", href: adminPath("/faq"), icon: HelpCircle, permission: "content:publish" },
+      { label: "Pricing Tiers", href: adminPath("/pricing"), icon: DollarSign, permission: "plans:write" },
       { label: "Careers & Jobs", href: adminPath("/careers"), icon: GraduationCap, permission: "careers:read" },
-      { label: "Media Library", href: adminPath("/media"), icon: ImageIcon, permission: "media:read" }
+      { label: "Media Library", href: adminPath("/media"), icon: ImageIcon, permission: "media:write" }
     ]
   },
   {
     group: "Site",
     items: [
-      { label: "Navigation Menus", href: adminPath("/navigation"), icon: Compass, permission: "nav:read" },
-      { label: "SEO & Metadata", href: adminPath("/seo"), icon: Search, permission: "seo:read" },
-      { label: "Redirects & 404s", href: adminPath("/redirects"), icon: CornerDownRight, permission: "redirects:read" },
+      { label: "Navigation Menus", href: adminPath("/navigation"), icon: Compass, permission: "navigation:write" },
+      { label: "SEO & Metadata", href: adminPath("/seo"), icon: Search, permission: "seo:write" },
+      { label: "Redirects & 404s", href: adminPath("/redirects"), icon: CornerDownRight, permission: "seo:write" },
       { label: "Site Settings", href: adminPath("/settings"), icon: Settings, permission: "settings:read" },
       { label: "AI Assistant", href: adminPath("/assistant"), icon: Bot, permission: "assistant:read" }
     ]
@@ -128,7 +138,7 @@ const ADMIN_NAVIGATION: NavGroup[] = [
   {
     group: "Insights",
     items: [
-      { label: "Analytics", href: adminPath("/analytics"), icon: BarChart3, permission: "reports:read" },
+      { label: "Analytics", href: adminPath("/analytics"), icon: BarChart3, permission: "analytics:read" },
       { label: "Reports & CSV", href: adminPath("/reports"), icon: FileSpreadsheet, permission: "reports:read" }
     ]
   },
@@ -136,23 +146,36 @@ const ADMIN_NAVIGATION: NavGroup[] = [
     group: "System",
     items: [
       { label: "My Profile", href: adminPath("/profile"), icon: UserCheck },
-      { label: "Staff & Roles", href: adminPath("/users"), icon: Shield, permission: "users:read" },
+      { label: "Staff & Roles", href: adminPath("/users"), icon: Shield, permission: "staff:read" },
       { label: "Audit Log", href: adminPath("/audit"), icon: Activity, permission: "audit:read" },
-      { label: "Integrations", href: adminPath("/integrations"), icon: Plug, permission: "system:read" },
-      { label: "Email Logs", href: adminPath("/email"), icon: Mail, permission: "system:read" },
-      { label: "Privacy & GDPR", href: adminPath("/privacy"), icon: Lock, permission: "privacy:manage" },
-      { label: "Health & Telemetry", href: adminPath("/health"), icon: HeartPulse, permission: "system:read" },
-      { label: "Backups", href: adminPath("/backups"), icon: Database, permission: "system:read" }
+      { label: "Integrations", href: adminPath("/integrations"), icon: Plug, permission: "integrations:read" },
+      { label: "Email Logs", href: adminPath("/email"), icon: Mail, permission: "emails:write" },
+      { label: "Privacy & GDPR", href: adminPath("/privacy"), icon: Lock, permission: "privacy:write" },
+      { label: "Health & Telemetry", href: adminPath("/health"), icon: HeartPulse, permission: "health:read" },
+      { label: "Backups", href: adminPath("/backups"), icon: Database, permission: "backups:export" }
     ]
   }
 ];
+
+/** Sidebar filter. The server still checks every page; this only hides links. */
+export function visibleNavigation(user: PermissionSubject & { setupPending?: boolean }): NavGroup[] {
+  return ADMIN_NAVIGATION.map((g) => ({
+    ...g,
+    items: g.items.filter((item) =>
+      user.setupPending ? item.href === adminPath("/profile") : !item.permission || can(user, item.permission)
+    )
+  })).filter((g) => g.items.length > 0);
+}
 
 export interface AdminShellProps {
   user: {
     id: string;
     name: string;
     email: string;
-    staffRole: StaffRole;
+    preset: PresetKey;
+    overrides: string[];
+    isOwner: boolean;
+    setupPending?: boolean;
   };
   impersonatedOrgName?: string | null;
   children: React.ReactNode;
@@ -187,13 +210,16 @@ export function AdminShell({ user, impersonatedOrgName, children }: AdminShellPr
     router.refresh();
   };
 
-  const roleBadges: Record<StaffRole, string> = {
-    ADMIN: "bg-emerald-100 text-emerald-800 border-emerald-200",
-    FINANCE: "bg-purple-100 text-purple-900 border-purple-200",
-    MANAGER: "bg-sage-100 text-ink border-sage-300",
-    EDITOR: "bg-blue-50 text-blue-800 border-blue-200",
-    SUPPORT: "bg-amber-50 text-amber-800 border-amber-200"
+  const roleBadges: Record<PresetKey, string> = {
+    admin: "bg-emerald-100 text-emerald-800 border-emerald-200",
+    client_manager: "bg-sage-100 text-ink border-sage-300",
+    delivery_lead: "bg-blue-50 text-blue-800 border-blue-200",
+    finance: "bg-purple-100 text-purple-900 border-purple-200",
+    editor: "bg-blue-50 text-blue-800 border-blue-200",
+    support: "bg-amber-50 text-amber-800 border-amber-200"
   };
+  const roleName = PRESETS[user.preset]?.label ?? user.preset;
+  const navigation = visibleNavigation(user);
 
   return (
     <div className="min-h-screen bg-bg text-ink flex flex-col font-sans">
@@ -229,11 +255,9 @@ export function AdminShell({ user, impersonatedOrgName, children }: AdminShellPr
 
           {/* Grouped Collapsible Navigation */}
           <nav className="flex-1 overflow-y-auto p-4 space-y-6 text-xs">
-            {ADMIN_NAVIGATION.map((group) => {
+            {navigation.map((group) => {
               // Filter items based on staff permissions
-              const visibleItems = group.items.filter(
-                (item) => !item.permission || hasPermission(user.staffRole, item.permission)
-              );
+              const visibleItems = group.items;
 
               if (visibleItems.length === 0) return null;
 
@@ -297,8 +321,8 @@ export function AdminShell({ user, impersonatedOrgName, children }: AdminShellPr
                   {user.name}
                 </div>
                 <div className="flex items-center gap-1.5 mt-0.5">
-                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border ${roleBadges[user.staffRole]}`}>
-                    {user.staffRole}
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border ${roleBadges[user.preset]}`}>
+                    {roleName}
                   </span>
                 </div>
               </Link>
@@ -345,10 +369,8 @@ export function AdminShell({ user, impersonatedOrgName, children }: AdminShellPr
               </div>
 
               <nav className="flex-1 overflow-y-auto p-4 space-y-5 text-xs">
-                {ADMIN_NAVIGATION.map((group) => {
-                  const visibleItems = group.items.filter(
-                    (item) => !item.permission || hasPermission(user.staffRole, item.permission)
-                  );
+                {navigation.map((group) => {
+                  const visibleItems = group.items;
                   if (visibleItems.length === 0) return null;
 
                   return (
@@ -397,8 +419,8 @@ export function AdminShell({ user, impersonatedOrgName, children }: AdminShellPr
                       {user.name}
                     </div>
                     <div className="flex items-center gap-1.5 mt-0.5">
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border ${roleBadges[user.staffRole]}`}>
-                        {user.staffRole}
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border ${roleBadges[user.preset]}`}>
+                        {roleName}
                       </span>
                     </div>
                   </Link>
@@ -457,7 +479,7 @@ export function AdminShell({ user, impersonatedOrgName, children }: AdminShellPr
             {/* Right: Quick Create, Search, Notifications & Avatar */}
             <div className="flex items-center gap-2.5">
               {/* Quick Create Dropdown */}
-              <div className="relative">
+              <div className={`relative ${user.setupPending ? "hidden" : ""}`}>
                 <button
                   type="button"
                   onClick={() => setQuickCreateOpen(!quickCreateOpen)}
@@ -472,6 +494,7 @@ export function AdminShell({ user, impersonatedOrgName, children }: AdminShellPr
                     className="absolute right-0 mt-2 w-48 rounded-2xl bg-white border border-rule/80 shadow-xl p-1.5 z-50 text-xs animate-in fade-in zoom-in-95 duration-150"
                     onClick={() => setQuickCreateOpen(false)}
                   >
+                    {can(user, "leads:write") && (
                     <Link
                       href={adminPath("/leads?create=true")}
                       className="flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-surface text-ink transition-colors"
@@ -479,6 +502,8 @@ export function AdminShell({ user, impersonatedOrgName, children }: AdminShellPr
                       <Users className="w-3.5 h-3.5 text-muted" />
                       <span>New Lead</span>
                     </Link>
+                    )}
+                    {can(user, "invoices:write") && (
                     <Link
                       href={adminPath("/invoices?create=true")}
                       className="flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-surface text-ink transition-colors"
@@ -486,6 +511,8 @@ export function AdminShell({ user, impersonatedOrgName, children }: AdminShellPr
                       <Receipt className="w-3.5 h-3.5 text-muted" />
                       <span>New Invoice</span>
                     </Link>
+                    )}
+                    {can(user, "projects:write") && (
                     <Link
                       href={adminPath("/projects?create=true")}
                       className="flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-surface text-ink transition-colors"
@@ -493,6 +520,8 @@ export function AdminShell({ user, impersonatedOrgName, children }: AdminShellPr
                       <FolderGit2 className="w-3.5 h-3.5 text-muted" />
                       <span>New Project</span>
                     </Link>
+                    )}
+                    {can(user, "content:publish") && (
                     <Link
                       href={adminPath("/blog?create=true")}
                       className="flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-surface text-ink transition-colors"
@@ -500,6 +529,8 @@ export function AdminShell({ user, impersonatedOrgName, children }: AdminShellPr
                       <BookOpen className="w-3.5 h-3.5 text-muted" />
                       <span>New Article</span>
                     </Link>
+                    )}
+                    {can(user, "tickets:write") && (
                     <Link
                       href={adminPath("/support?create=true")}
                       className="flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-surface text-ink transition-colors"
@@ -507,6 +538,7 @@ export function AdminShell({ user, impersonatedOrgName, children }: AdminShellPr
                       <LifeBuoy className="w-3.5 h-3.5 text-muted" />
                       <span>New Ticket</span>
                     </Link>
+                    )}
                   </div>
                 )}
               </div>
@@ -536,8 +568,8 @@ export function AdminShell({ user, impersonatedOrgName, children }: AdminShellPr
                     <div className="px-3 py-2 border-b border-rule/60 mb-1">
                       <div className="font-bold text-ink truncate">{user.name}</div>
                       <div className="text-muted text-[11px] truncate">{user.email}</div>
-                      <span className={`inline-block mt-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border ${roleBadges[user.staffRole]}`}>
-                        {user.staffRole}
+                      <span className={`inline-block mt-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border ${roleBadges[user.preset]}`}>
+                        {roleName}
                       </span>
                     </div>
 
@@ -548,6 +580,7 @@ export function AdminShell({ user, impersonatedOrgName, children }: AdminShellPr
                       <UserCheck className="w-3.5 h-3.5 text-emerald-600" />
                       <span>My Profile &amp; Security</span>
                     </Link>
+                    {can(user, "staff:read") && (
                     <Link
                       href={adminPath("/users")}
                       className="flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-surface text-ink transition-colors"
@@ -555,6 +588,8 @@ export function AdminShell({ user, impersonatedOrgName, children }: AdminShellPr
                       <Shield className="w-3.5 h-3.5 text-muted" />
                       <span>Staff Accounts &amp; 2FA</span>
                     </Link>
+                    )}
+                    {can(user, "settings:read") && (
                     <Link
                       href={adminPath("/settings")}
                       className="flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-surface text-ink transition-colors"
@@ -562,6 +597,7 @@ export function AdminShell({ user, impersonatedOrgName, children }: AdminShellPr
                       <Settings className="w-3.5 h-3.5 text-muted" />
                       <span>Global Site Settings</span>
                     </Link>
+                    )}
 
                     <div className="border-t border-rule/60 my-1" />
 

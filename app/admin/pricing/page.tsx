@@ -5,7 +5,7 @@ import { projectPricingTiers } from "@/data/pricing";
 import { DollarSign, Check, ArrowRight } from "lucide-react";
 
 export default async function AdminPricingPage() {
-  await requireStaffUser("content:read");
+  await requireStaffUser("plans:write");
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300">

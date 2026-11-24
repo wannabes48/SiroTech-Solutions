@@ -3,6 +3,7 @@
 import React, { useEffect, useState, useTransition } from "react";
 import QRCode from "qrcode";
 import { useRouter } from "next/navigation";
+import { adminPath } from "@/lib/hosts";
 import {
   updateStaffProfileAction,
   changeStaffPasswordAction,
@@ -82,11 +83,16 @@ function renderDeviceIcon(s: any) {
 export function AdminProfileClient({
   initialProfile,
   initialSessions,
-  initialPrefs
+  initialPrefs,
+  mustSetupTwoStep = false,
+  roleLabel
 }: {
   initialProfile: any;
   initialSessions: any[];
   initialPrefs: any;
+  /** Non-owner staff without an authenticator: nothing else in the admin loads until this is done. */
+  mustSetupTwoStep?: boolean;
+  roleLabel?: string;
 }) {
   const router = useRouter();
   const [profile, setProfile] = useState(initialProfile);
@@ -113,7 +119,7 @@ export function AdminProfileClient({
   const [passwordError, setPasswordError] = useState<string | null>(null);
 
   // 2FA Setup State
-  const [show2FAModal, setShow2FAModal] = useState(false);
+  const [show2FAModal, setShow2FAModal] = useState(mustSetupTwoStep);
   const [totpCode, setTotpCode] = useState("");
   // Fresh random 160-bit base32 secret per setup (never a shared constant).
   const [totpSecret, setTotpSecret] = useState(() => {
@@ -223,6 +229,10 @@ export function AdminProfileClient({
         setShow2FAModal(false);
         setTotpCode("");
         showToast("Two-factor authentication successfully activated.");
+        if (mustSetupTwoStep) {
+          router.push(adminPath());
+          return;
+        }
         router.refresh();
       }
     });
@@ -267,6 +277,16 @@ export function AdminProfileClient({
 
   return (
     <div className="space-y-8 max-w-5xl">
+      {mustSetupTwoStep && !profile.totp_enabled && (
+        <div className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-xs text-amber-900 flex items-start gap-3">
+          <ShieldAlert className="w-4 h-4 shrink-0 mt-0.5" />
+          <div>
+            <p className="font-bold">Set up two-step verification to continue</p>
+            <p className="mt-0.5">Staff accounts need an authenticator app before any other admin page opens. Scan the QR code, enter the 6-digit code, and you&apos;ll be taken to your dashboard.</p>
+            <button type="button" onClick={() => setShow2FAModal(true)} className="mt-2 px-3 py-1.5 rounded-full bg-ink text-white font-semibold cursor-pointer">Set up authenticator</button>
+          </div>
+        </div>
+      )}
       {/* Toast Alert */}
       {toastMessage && (
         <div className="fixed bottom-6 right-6 z-50 bg-[#1B2E24] text-white px-5 py-3 rounded-2xl shadow-xl text-xs font-semibold flex items-center gap-2 animate-in slide-in-from-bottom-3 duration-200">
@@ -308,7 +328,7 @@ export function AdminProfileClient({
               </div>
 
               <span className="px-3 py-1 rounded-full text-xs font-bold bg-surface border border-rule text-ink">
-                Role: {profile.staff_role || profile.role || "ADMIN"}
+                Role: {roleLabel || profile.staff_role || profile.role || "ADMIN"}
               </span>
             </div>
 

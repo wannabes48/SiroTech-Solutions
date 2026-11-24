@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireStaffUser, logAdminAudit } from "@/lib/admin-permissions";
+import { requireStaffUser, can, recordExport } from "@/lib/admin-permissions";
+import { unstable_rethrow } from "next/navigation";
 import { query } from "@/lib/db";
 
 const ALLOWED_TABLES: Record<string, string> = {
@@ -19,11 +20,23 @@ const ALLOWED_TABLES: Record<string, string> = {
   consultations: "consultations"
 };
 
+/** Each table needs its own export permission; anything not listed is a full backup export (owner). */
+const TABLE_PERMISSION: Record<string, string> = {
+  leads: "leads:export",
+  consultations: "leads:export",
+  organizations: "clients:export",
+  invoices: "payments:export",
+  payments: "payments:export"
+};
+
 export async function GET(request: NextRequest) {
   try {
-    const staff = await requireStaffUser("reports:export");
+    const staff = await requireStaffUser();
     const { searchParams } = new URL(request.url);
     const tableKey = searchParams.get("table") || "";
+    if (!can(staff, TABLE_PERMISSION[tableKey] || "backups:export")) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
 
     const tableName = ALLOWED_TABLES[tableKey];
     if (!tableName) {
@@ -43,17 +56,20 @@ export async function GET(request: NextRequest) {
       return copy;
     });
 
-    await logAdminAudit({
-      userId: staff.id,
-      userName: staff.name,
-      action: "TABLE_DATA_EXPORTED",
-      entity: tableName,
-      metadata: { rowCount: sanitizedRows.length }
+    // Private notes never leave in an export unless the person could read them.
+    const visibleRows = sanitizedRows.map((row) => {
+      const copy: Record<string, any> = { ...row };
+      if ("account_notes" in copy && !can(staff, "clients:internal")) delete copy.account_notes;
+      if ("delivery_notes" in copy && !can(staff, "projects:internal")) delete copy.delivery_notes;
+      if ("staff_permissions" in copy && !can(staff, "staff:read")) delete copy.staff_permissions;
+      return copy;
     });
+    const body = JSON.stringify(visibleRows, null, 2);
+    await recordExport(staff, tableName, visibleRows.length, Buffer.byteLength(body));
 
     const filename = `sirotech_${tableName}_export_${new Date().toISOString().slice(0, 10)}.json`;
 
-    return new NextResponse(JSON.stringify(sanitizedRows, null, 2), {
+    return new NextResponse(body, {
       status: 200,
       headers: {
         "Content-Type": "application/json",
@@ -61,9 +77,7 @@ export async function GET(request: NextRequest) {
       }
     });
   } catch (error: any) {
-    if (error?.digest === "NEXT_NOT_FOUND" || error?.message?.includes("Forbidden")) {
-      return NextResponse.json({ error: "Access denied" }, { status: 403 });
-    }
+    unstable_rethrow(error); // let notFound()/redirect() through
     console.error("[Export API Error]", error);
     return NextResponse.json({ error: "Internal export failure" }, { status: 500 });
   }

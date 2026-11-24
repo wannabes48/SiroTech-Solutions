@@ -1,5 +1,6 @@
 import React from "react";
-import { requireStaffUser } from "@/lib/admin-permissions";
+import { requireStaffUser, can } from "@/lib/admin-permissions";
+import { projectView } from "@/lib/admin-views";
 import { getAdminProjects } from "@/lib/admin-db";
 import { query } from "@/lib/db";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
@@ -10,7 +11,7 @@ export default async function AdminProjectsPage({
 }: {
   searchParams?: Promise<{ create?: string; orgId?: string }>;
 }) {
-  await requireStaffUser("projects:read");
+  const staff = await requireStaffUser("projects:read");
   const resolvedParams = searchParams ? await searchParams : {};
   const [projects, orgsRes] = await Promise.all([
     getAdminProjects(),
@@ -26,10 +27,12 @@ export default async function AdminProjectsPage({
       />
 
       <AdminProjectsClient 
-        initialProjects={JSON.parse(JSON.stringify(projects))} 
+        initialProjects={JSON.parse(JSON.stringify(projects.map((p) => projectView(staff, p))))}
         organizations={JSON.parse(JSON.stringify(orgsRes.rows))}
         defaultOrgId={resolvedParams.orgId}
-        initialOpenModal={resolvedParams.create === "true"}
+        initialOpenModal={resolvedParams.create === "true" && can(staff, "projects:write")}
+        canCreateProject={can(staff, "projects:write")}
+        canRequestProject={can(staff, "projects:create")}
       />
     </div>
   );

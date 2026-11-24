@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/auth-server";
-import { requireStaffUser, logAdminAudit } from "@/lib/admin-permissions";
+import { requireStaffUser, logAdminAudit, can } from "@/lib/admin-permissions";
 import { query } from "@/lib/db";
 import JSZip from "jszip";
+import { unstable_rethrow } from "next/navigation";
 
 export async function GET(request: NextRequest) {
   try {
@@ -26,7 +27,12 @@ export async function GET(request: NextRequest) {
     const privReq = reqRes.rows[0];
 
     // Authorization check: Must be staff OR the user requesting their own export
-    const isStaff = sessionUser.role === "STAFF" || sessionUser.role === "ADMIN";
+    // Staff need privacy:write (owner by default); a client may download only their own request.
+    let isStaff = false;
+    if (sessionUser.role === "STAFF" || sessionUser.role === "ADMIN") {
+      const staffUser = await requireStaffUser();
+      isStaff = can(staffUser, "privacy:write");
+    }
     const isOwnerOfRequest = sessionUser.email.toLowerCase() === privReq.email.toLowerCase() || sessionUser.id === privReq.user_id;
 
     if (!isStaff && !isOwnerOfRequest) {
@@ -257,6 +263,7 @@ SiroTech Solutions Limited, Nairobi, Kenya
       }
     });
   } catch (error: any) {
+    unstable_rethrow(error);
     console.error("[Privacy Export ZIP Error]", error);
     return NextResponse.json({ error: "Failed to generate data export ZIP package" }, { status: 500 });
   }

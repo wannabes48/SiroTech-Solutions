@@ -5,7 +5,7 @@ import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { AdminTasksClient } from "./AdminTasksClient";
 
 export default async function AdminTasksPage() {
-  await requireStaffUser();
+  await requireStaffUser("dashboard:read");
   const tasks = await getAdminTasks();
 
   return (

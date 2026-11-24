@@ -5,7 +5,7 @@ import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { AdminNavigationClient } from "./AdminNavigationClient";
 
 export default async function AdminNavigationPage() {
-  await requireStaffUser("nav:read");
+  await requireStaffUser("navigation:write");
 
   let headerItems = [
     { label: "Services", href: "/services" },

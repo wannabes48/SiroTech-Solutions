@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireStaffUser, logAdminAudit } from "@/lib/admin-permissions";
+import { requireStaffUser, can, recordExport } from "@/lib/admin-permissions";
+import { unstable_rethrow } from "next/navigation";
 import { query } from "@/lib/db";
 
 function escapeCsv(val: any): string {
@@ -27,12 +28,25 @@ function getDateClause(columnName: string, range: string): string {
   return "";
 }
 
+/** Each report needs its own export permission (audited, owners alerted). */
+const REPORT_PERMISSION: Record<string, string> = {
+  revenue: "payments:export",
+  leads: "leads:export",
+  consultations: "leads:export",
+  delivery: "projects:write",
+  support: "tickets:assign",
+  audit: "audit:read"
+};
+
 export async function GET(request: NextRequest) {
   try {
     const staff = await requireStaffUser("reports:read");
     const { searchParams } = new URL(request.url);
     const type = searchParams.get("type") || "revenue";
     const range = searchParams.get("range") || "all";
+    if (!can(staff, REPORT_PERMISSION[type] || "backups:export")) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
 
     const dateToday = new Date().toISOString().slice(0, 10);
     let filename = `sirotech_${type}_report_${dateToday}.csv`;
@@ -368,14 +382,8 @@ export async function GET(request: NextRequest) {
     const bodyLines = rows.map((r) => r.map(escapeCsv).join(","));
     const csvContent = "\uFEFF" + [headerLine, ...bodyLines].join("\r\n");
 
-    // Centralized Audit Log
-    await logAdminAudit({
-      userId: staff.id,
-      userName: staff.name,
-      action: "REPORT_CSV_EXPORTED",
-      entity: "REPORT",
-      metadata: { type, range, rowCount: rows.length }
-    });
+    // Audit entry, plus an alert to the owners when someone else exports
+    await recordExport(staff, `${type} report (${range})`, rows.length, Buffer.byteLength(csvContent));
 
     return new NextResponse(csvContent, {
       status: 200,
@@ -386,9 +394,7 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (error: any) {
-    if (error?.digest === "NEXT_NOT_FOUND" || error?.message?.includes("Forbidden")) {
-      return NextResponse.json({ error: "Forbidden: insufficient permissions" }, { status: 403 });
-    }
+    unstable_rethrow(error); // let notFound()/redirect() through
     console.error("[Admin Reports CSV Export Error]", error);
     return NextResponse.json({ error: "Export generation failed" }, { status: 500 });
   }

@@ -7,7 +7,7 @@ import { ContentListManager } from "@/components/admin/content/ContentListManage
 import { getAllPosts } from "@/lib/blog";
 
 export default async function AdminBlogPage() {
-  await requireStaffUser("blog:read");
+  await requireStaffUser("content:publish");
 
   let posts: any[] = [];
   try {

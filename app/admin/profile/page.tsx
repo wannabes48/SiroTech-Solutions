@@ -1,12 +1,13 @@
 import React from "react";
-import { requireStaffUser } from "@/lib/admin-permissions";
+import { requireStaffUser, presetLabel } from "@/lib/admin-permissions";
 import { query } from "@/lib/db";
 import { getStaffSessions, getStaffNotificationPrefs } from "@/lib/admin-db";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { AdminProfileClient } from "./AdminProfileClient";
 
 export default async function AdminProfilePage() {
-  const staff = await requireStaffUser();
+  // The one admin page that opens before two-step is set up (so it can be set up here).
+  const staff = await requireStaffUser(undefined, { allowWithoutTwoStep: true });
 
   const [userRes, sessions, notificationPrefs] = await Promise.all([
     query(
@@ -30,6 +31,8 @@ export default async function AdminProfilePage() {
       <AdminProfileClient
         initialProfile={profileData}
         initialSessions={sessions}
+        mustSetupTwoStep={!staff.isOwner && !staff.totpEnabled}
+        roleLabel={presetLabel(staff)}
         initialPrefs={notificationPrefs || {
           email_leads: true,
           email_tickets: true,
