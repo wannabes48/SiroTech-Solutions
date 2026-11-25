@@ -16,6 +16,7 @@ import {
   Sparkles,
   RotateCcw,
 } from "lucide-react";
+import { SITE_URL } from "@/lib/site";
 
 export const metadata: Metadata = {
   title: "Case Studies & Client Work | SiroTech Solutions Nairobi",
@@ -25,7 +26,7 @@ export const metadata: Metadata = {
     title: "Case Studies & Engineering Work | SiroTech Solutions",
     description:
       "Production systems and hackathon-winning prototypes built with modern TypeScript, Python, and cloud infrastructure.",
-    url: "https://sirotech.vercel.app/work",
+    url: `${SITE_URL}/work`,
   },
 };
 
@@ -84,15 +85,15 @@ export default async function WorkPage({ searchParams }: WorkPageProps) {
     "@graph": [
       {
         "@type": "CollectionPage",
-        "@id": "https://sirotech.vercel.app/work#page",
+        "@id": `${SITE_URL}/work#page`,
         name: "Case Studies & Engineering Portfolio | SiroTech Solutions",
         description:
           "Production systems and software engineering architectures delivered by SiroTech Solutions.",
-        url: "https://sirotech.vercel.app/work",
+        url: `${SITE_URL}/work`,
         isPartOf: {
           "@type": "WebSite",
           name: "SiroTech Solutions",
-          url: "https://sirotech.vercel.app",
+          url: SITE_URL,
         },
       },
       {
@@ -102,13 +103,13 @@ export default async function WorkPage({ searchParams }: WorkPageProps) {
             "@type": "ListItem",
             position: 1,
             name: "Home",
-            item: "https://sirotech.vercel.app",
+            item: SITE_URL,
           },
           {
             "@type": "ListItem",
             position: 2,
             name: "Work",
-            item: "https://sirotech.vercel.app/work",
+            item: `${SITE_URL}/work`,
           },
         ],
       },

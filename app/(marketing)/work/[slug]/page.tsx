@@ -23,6 +23,7 @@ import {
   ChevronLeft,
   Calendar,
 } from "lucide-react";
+import { SITE_URL } from "@/lib/site";
 
 export async function generateStaticParams() {
   const all = await getCaseStudies();
@@ -47,7 +48,7 @@ export async function generateMetadata({
     openGraph: {
       title: `${project.title} - ${project.tagline} | SiroTech Solutions`,
       description: project.summary,
-      url: `https://sirotech.vercel.app/work/${project.slug}`,
+      url: `${SITE_URL}/work/${project.slug}`,
       type: "article",
     },
   };
@@ -81,19 +82,19 @@ export default async function CaseStudyDetailPage({
     "@graph": [
       {
         "@type": "Article",
-        "@id": `https://sirotech.vercel.app/work/${project.slug}#article`,
+        "@id": `${SITE_URL}/work/${project.slug}#article`,
         headline: `${project.title}: ${project.tagline}`,
         description: project.summary,
-        url: `https://sirotech.vercel.app/work/${project.slug}`,
+        url: `${SITE_URL}/work/${project.slug}`,
         author: {
           "@type": "Organization",
           name: "SiroTech Solutions",
-          url: "https://sirotech.vercel.app",
+          url: SITE_URL,
         },
         publisher: {
           "@type": "Organization",
           name: "SiroTech Solutions",
-          url: "https://sirotech.vercel.app",
+          url: SITE_URL,
         },
         about: {
           "@type": "CreativeWork",
@@ -109,19 +110,19 @@ export default async function CaseStudyDetailPage({
             "@type": "ListItem",
             position: 1,
             name: "Home",
-            item: "https://sirotech.vercel.app",
+            item: SITE_URL,
           },
           {
             "@type": "ListItem",
             position: 2,
             name: "Work",
-            item: "https://sirotech.vercel.app/work",
+            item: `${SITE_URL}/work`,
           },
           {
             "@type": "ListItem",
             position: 3,
             name: project.title,
-            item: `https://sirotech.vercel.app/work/${project.slug}`,
+            item: `${SITE_URL}/work/${project.slug}`,
           },
         ],
       },

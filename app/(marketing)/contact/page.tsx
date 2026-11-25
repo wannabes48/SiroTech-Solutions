@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import Navbar from "@/components/Navbar";
 import { ContactForm } from "@/components/contact/ContactForm";
 import { Mail, Phone, MapPin, Clock, ShieldCheck, CheckCircle2 } from "lucide-react";
+import { SITE_URL } from "@/lib/site";
 
 export const metadata: Metadata = {
   title: "Contact Our Engineering Studio | SiroTech Solutions",
@@ -15,16 +16,16 @@ const contactJsonLd = {
   "@graph": [
     {
       "@type": "ContactPage",
-      "@id": "https://sirotech.vercel.app/contact/#webpage",
-      url: "https://sirotech.vercel.app/contact",
+      "@id": `${SITE_URL}/contact/#webpage`,
+      url: `${SITE_URL}/contact`,
       name: "Contact SiroTech Solutions",
       description: "Submit a project brief or schedule an engineering consultation.",
     },
     {
       "@type": "ProfessionalService",
-      "@id": "https://sirotech.vercel.app/#organization",
+      "@id": `${SITE_URL}/#organization`,
       name: "SiroTech Solutions",
-      url: "https://sirotech.vercel.app",
+      url: SITE_URL,
       email: "hello@sirotech.com",
       telephone: "+254745131817",
       priceRange: "$$",

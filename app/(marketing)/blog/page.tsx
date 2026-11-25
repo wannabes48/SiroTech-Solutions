@@ -22,6 +22,7 @@ import {
   Sparkles,
   ArrowUpRight,
 } from "lucide-react";
+import { SITE_URL } from "@/lib/site";
 
 export const metadata: Metadata = {
   title: "Engineering Blog & Technical Insights | SiroTech Solutions Nairobi",
@@ -31,7 +32,7 @@ export const metadata: Metadata = {
     title: "SiroTech Engineering Blog & Architectural Guides",
     description:
       "Deep-dive technical articles written by practicing systems architects in Nairobi.",
-    url: "https://sirotech.vercel.app/blog",
+    url: `${SITE_URL}/blog`,
   },
 };
 
@@ -63,15 +64,15 @@ export default async function BlogIndexPage({ searchParams }: BlogPageProps) {
     "@graph": [
       {
         "@type": "Blog",
-        "@id": "https://sirotech.vercel.app/blog#blog",
+        "@id": `${SITE_URL}/blog#blog`,
         name: "SiroTech Solutions Engineering Blog",
         description:
           "Technical articles and systems engineering case guides for East African and global architectures.",
-        url: "https://sirotech.vercel.app/blog",
+        url: `${SITE_URL}/blog`,
         publisher: {
           "@type": "Organization",
           name: "SiroTech Solutions",
-          url: "https://sirotech.vercel.app",
+          url: SITE_URL,
         },
       },
       {
@@ -81,13 +82,13 @@ export default async function BlogIndexPage({ searchParams }: BlogPageProps) {
             "@type": "ListItem",
             position: 1,
             name: "Home",
-            item: "https://sirotech.vercel.app",
+            item: SITE_URL,
           },
           {
             "@type": "ListItem",
             position: 2,
             name: "Blog",
-            item: "https://sirotech.vercel.app/blog",
+            item: `${SITE_URL}/blog`,
           },
         ],
       },

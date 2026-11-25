@@ -19,6 +19,7 @@ import {
   ChevronRight,
   FolderOpen,
 } from "lucide-react";
+import { SITE_URL } from "@/lib/site";
 
 export const dynamic = "force-static";
 
@@ -53,7 +54,7 @@ export async function generateMetadata({
     };
   }
 
-  const canonicalUrl = `https://sirotech.vercel.app/blog/category/${category.slug}`;
+  const canonicalUrl = `${SITE_URL}/blog/category/${category.slug}`;
 
   return {
     title: `${category.label} Engineering Guides & Insights | SiroTech Solutions`,
@@ -104,14 +105,14 @@ export default async function BlogCategoryPage({
     "@graph": [
       {
         "@type": "CollectionPage",
-        "@id": `https://sirotech.vercel.app/blog/category/${slug}#collection`,
+        "@id": `${SITE_URL}/blog/category/${slug}#collection`,
         name: `${category.label} Articles`,
         description: `Technical archive of engineering guides in ${category.label}.`,
-        url: `https://sirotech.vercel.app/blog/category/${slug}`,
+        url: `${SITE_URL}/blog/category/${slug}`,
         publisher: {
           "@type": "Organization",
           name: "SiroTech Solutions",
-          url: "https://sirotech.vercel.app",
+          url: SITE_URL,
         },
       },
       {
@@ -121,19 +122,19 @@ export default async function BlogCategoryPage({
             "@type": "ListItem",
             position: 1,
             name: "Home",
-            item: "https://sirotech.vercel.app",
+            item: SITE_URL,
           },
           {
             "@type": "ListItem",
             position: 2,
             name: "Blog",
-            item: "https://sirotech.vercel.app/blog",
+            item: `${SITE_URL}/blog`,
           },
           {
             "@type": "ListItem",
             position: 3,
             name: category.label,
-            item: `https://sirotech.vercel.app/blog/category/${slug}`,
+            item: `${SITE_URL}/blog/category/${slug}`,
           },
         ],
       },

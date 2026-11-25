@@ -1,6 +1,7 @@
 ﻿import React from "react";
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
+import { SITE_URL } from "@/lib/site";
 
 export interface BreadcrumbItem {
   label: string;
@@ -10,7 +11,7 @@ export interface BreadcrumbItem {
 export function Breadcrumbs({
   items,
   className = "",
-  baseUrl = "https://sirotech.vercel.app",
+  baseUrl = SITE_URL,
 }: {
   items: BreadcrumbItem[];
   className?: string;

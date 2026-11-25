@@ -25,6 +25,7 @@ import {
   Sparkles,
   Users,
 } from "lucide-react";
+import { SITE_URL } from "@/lib/site";
 
 export const metadata: Metadata = {
   title: "Careers & Engineering Culture | SiroTech Solutions Nairobi",
@@ -34,7 +35,7 @@ export const metadata: Metadata = {
     title: "Careers at SiroTech Solutions | Software Engineering Studio",
     description:
       "High autonomy, competitive compensation, top-tier hardware, and zero corporate fluff. Explore open engineering roles.",
-    url: "https://sirotech.vercel.app/careers",
+    url: `${SITE_URL}/careers`,
   },
 };
 
@@ -57,11 +58,11 @@ export default function CareersIndexPage() {
     "@graph": [
       {
         "@type": "WebPage",
-        "@id": "https://sirotech.vercel.app/careers#webpage",
+        "@id": `${SITE_URL}/careers#webpage`,
         name: "Careers at SiroTech Solutions",
         description:
           "Open engineering positions, culture, and benefits at SiroTech Solutions in Nairobi, Kenya.",
-        url: "https://sirotech.vercel.app/careers",
+        url: `${SITE_URL}/careers`,
       },
       {
         "@type": "BreadcrumbList",
@@ -70,13 +71,13 @@ export default function CareersIndexPage() {
             "@type": "ListItem",
             position: 1,
             name: "Home",
-            item: "https://sirotech.vercel.app",
+            item: SITE_URL,
           },
           {
             "@type": "ListItem",
             position: 2,
             name: "Careers",
-            item: "https://sirotech.vercel.app/careers",
+            item: `${SITE_URL}/careers`,
           },
         ],
       },

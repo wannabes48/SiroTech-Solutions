@@ -14,6 +14,7 @@ import {
   Building,
   ArrowRight,
 } from "lucide-react";
+import { SITE_URL } from "@/lib/site";
 
 export const metadata: Metadata = {
   title: "Client Testimonials & Reviews | SiroTech Solutions Nairobi",
@@ -23,7 +24,7 @@ export const metadata: Metadata = {
     title: "Client Testimonials & Partner Reviews | SiroTech Solutions",
     description:
       "Verified feedback from founders, product directors, and engineering leaders.",
-    url: "https://sirotech.vercel.app/testimonials",
+    url: `${SITE_URL}/testimonials`,
   },
 };
 
@@ -35,13 +36,19 @@ export default async function TestimonialsPage() {
     "@graph": [
       {
         "@type": "ItemList",
-        "@id": "https://sirotech.vercel.app/testimonials#list",
+        "@id": `${SITE_URL}/testimonials#list`,
         name: "Client Testimonials for SiroTech Solutions",
         description:
           "Independent verified feedback from business leaders and founders.",
         itemListElement: reviews.map((rev, idx) => ({
           "@type": "Review",
           position: idx + 1,
+          itemReviewed: {
+            "@type": "Organization",
+            "@id": `${SITE_URL}/#organization`,
+            name: "SiroTech Solutions",
+            url: SITE_URL,
+          },
           author: {
             "@type": "Person",
             name: rev.author,
@@ -66,13 +73,13 @@ export default async function TestimonialsPage() {
             "@type": "ListItem",
             position: 1,
             name: "Home",
-            item: "https://sirotech.vercel.app",
+            item: SITE_URL,
           },
           {
             "@type": "ListItem",
             position: 2,
             name: "Testimonials",
-            item: "https://sirotech.vercel.app/testimonials",
+            item: `${SITE_URL}/testimonials`,
           },
         ],
       },

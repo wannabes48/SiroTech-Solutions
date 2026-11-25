@@ -1,8 +1,7 @@
 import type { MetadataRoute } from "next";
 import { headers } from "next/headers";
 import { areaForHost } from "@/lib/hosts";
-
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://sirotech.vercel.app";
+import { SITE_URL } from "@/lib/site";
 
 export default async function robots(): Promise<MetadataRoute.Robots> {
   // portal.* and admin.* are never crawled (pages also send X-Robots-Tag: noindex from middleware).

@@ -21,6 +21,7 @@ import {
   MessageSquare,
   Search,
 } from "lucide-react";
+import { SITE_URL } from "@/lib/site";
 
 export const metadata: Metadata = {
   title: "Frequently Asked Questions | SiroTech Solutions Nairobi",
@@ -30,7 +31,7 @@ export const metadata: Metadata = {
     title: "FAQ & Engineering Guidelines | SiroTech Solutions",
     description:
       "Clear, transparent answers on project pricing, sprint delivery, technical capabilities, and production maintenance.",
-    url: "https://sirotech.vercel.app/faq",
+    url: `${SITE_URL}/faq`,
   },
 };
 

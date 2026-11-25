@@ -9,6 +9,7 @@ import PricingTeaser from "@/components/home/PricingTeaser";
 import Testimonials from "@/components/home/Testimonials";
 import BlogTeaser from "@/components/home/BlogTeaser";
 import FinalCTA from "@/components/home/FinalCTA";
+import { SITE_URL } from "@/lib/site";
 
 export const metadata = {
   title: "SiroTech Solutions | Scalable Software & IT Services in Nairobi",
@@ -21,10 +22,10 @@ const jsonLd = {
   "@graph": [
     {
       "@type": "Organization",
-      "@id": "https://sirotech.vercel.app/#organization",
+      "@id": `${SITE_URL}/#organization`,
       name: "SiroTech Solutions",
-      url: "https://sirotech.vercel.app",
-      logo: "https://sirotech.vercel.app/logo.svg",
+      url: SITE_URL,
+      logo: `${SITE_URL}/logo.svg`,
       description:
         "Independent software and IT services studio specializing in custom web applications, cloud infrastructure, and AI integrations.",
       address: {
@@ -35,17 +36,17 @@ const jsonLd = {
       contactPoint: {
         "@type": "ContactPoint",
         contactType: "sales and engineering",
-        email: "hello@sirotech.vercel.app",
+        email: "hello@sirotech.co.ke",
         availableLanguage: ["English", "Swahili"],
       },
     },
     {
       "@type": "WebSite",
-      "@id": "https://sirotech.vercel.app/#website",
-      url: "https://sirotech.vercel.app",
+      "@id": `${SITE_URL}/#website`,
+      url: SITE_URL,
       name: "SiroTech Solutions",
       publisher: {
-        "@id": "https://sirotech.vercel.app/#organization",
+        "@id": `${SITE_URL}/#organization`,
       },
     },
   ],

@@ -25,6 +25,7 @@ import {
   Sparkles,
   Zap,
 } from "lucide-react";
+import { SITE_URL } from "@/lib/site";
 
 export async function generateStaticParams() {
   const all = await getSolutions();
@@ -49,7 +50,7 @@ export async function generateMetadata({
     openGraph: {
       title: `${solution.title} - ${solution.tagline} | SiroTech`,
       description: solution.summary,
-      url: `https://sirotech.vercel.app/solutions/${solution.slug}`,
+      url: `${SITE_URL}/solutions/${solution.slug}`,
     },
   };
 }
@@ -71,7 +72,7 @@ export default async function SolutionDetailPage({
     "@graph": [
       {
         "@type": "SoftwareApplication",
-        "@id": `https://sirotech.vercel.app/solutions/${solution.slug}#app`,
+        "@id": `${SITE_URL}/solutions/${solution.slug}#app`,
         name: solution.title,
         applicationCategory: "BusinessApplication",
         operatingSystem: "Cloud / Web / Linux",
@@ -85,7 +86,7 @@ export default async function SolutionDetailPage({
       },
       {
         "@type": "FAQPage",
-        "@id": `https://sirotech.vercel.app/solutions/${solution.slug}#faq`,
+        "@id": `${SITE_URL}/solutions/${solution.slug}#faq`,
         mainEntity: solution.faqs.map((faq) => ({
           "@type": "Question",
           name: faq.q,
@@ -102,19 +103,19 @@ export default async function SolutionDetailPage({
             "@type": "ListItem",
             position: 1,
             name: "Home",
-            item: "https://sirotech.vercel.app",
+            item: SITE_URL,
           },
           {
             "@type": "ListItem",
             position: 2,
             name: "Solutions",
-            item: "https://sirotech.vercel.app/solutions",
+            item: `${SITE_URL}/solutions`,
           },
           {
             "@type": "ListItem",
             position: 3,
             name: solution.title,
-            item: `https://sirotech.vercel.app/solutions/${solution.slug}`,
+            item: `${SITE_URL}/solutions/${solution.slug}`,
           },
         ],
       },

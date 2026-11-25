@@ -2,8 +2,7 @@ import type { MetadataRoute } from "next";
 import { headers } from "next/headers";
 import { ROUTES } from "@/lib/assistant/routes";
 import { areaForHost } from "@/lib/hosts";
-
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://sirotech.vercel.app";
+import { SITE_URL } from "@/lib/site";
 
 // Auth and portal pages live on portal.* / admin.* and must not be listed.
 const NON_PUBLIC = /^\/(portal|admin|sign-in|sign-up|forgot-password|reset-password|verify-email|invite)(\/|$)/;

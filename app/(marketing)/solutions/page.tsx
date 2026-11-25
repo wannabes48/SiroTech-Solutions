@@ -16,6 +16,7 @@ import {
   Lock,
   ArrowUpRight,
 } from "lucide-react";
+import { SITE_URL } from "@/lib/site";
 
 export const metadata: Metadata = {
   title: "Productised Solutions & Frameworks | SiroTech Solutions Nairobi",
@@ -25,7 +26,7 @@ export const metadata: Metadata = {
     title: "Productised Solutions & Architecture Engines | SiroTech",
     description:
       "Accelerate your deployment timeline by 60% with pre-engineered enterprise software cores.",
-    url: "https://sirotech.vercel.app/solutions",
+    url: `${SITE_URL}/solutions`,
   },
 };
 
@@ -37,15 +38,15 @@ export default async function SolutionsIndexPage() {
     "@graph": [
       {
         "@type": "CollectionPage",
-        "@id": "https://sirotech.vercel.app/solutions#page",
+        "@id": `${SITE_URL}/solutions#page`,
         name: "Productised Software Solutions | SiroTech Solutions",
         description:
           "Pre-architected digital engines delivering rapid time-to-market without compromising code quality.",
-        url: "https://sirotech.vercel.app/solutions",
+        url: `${SITE_URL}/solutions`,
         isPartOf: {
           "@type": "WebSite",
           name: "SiroTech Solutions",
-          url: "https://sirotech.vercel.app",
+          url: SITE_URL,
         },
       },
       {
@@ -55,13 +56,13 @@ export default async function SolutionsIndexPage() {
             "@type": "ListItem",
             position: 1,
             name: "Home",
-            item: "https://sirotech.vercel.app",
+            item: SITE_URL,
           },
           {
             "@type": "ListItem",
             position: 2,
             name: "Solutions",
-            item: "https://sirotech.vercel.app/solutions",
+            item: `${SITE_URL}/solutions`,
           },
         ],
       },

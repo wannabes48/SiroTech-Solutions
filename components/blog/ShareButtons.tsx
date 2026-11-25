@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import { Link2, Check, Share2, MessageCircle } from "lucide-react";
+import { SITE_URL } from "@/lib/site";
 
 interface ShareButtonsProps {
   title: string;
@@ -12,7 +13,7 @@ export function ShareButtons({ title, slug }: ShareButtonsProps) {
   const [copied, setCopied] = useState(false);
 
   // Canonical production URL is strictly deterministic between server SSR and client hydration
-  const canonicalUrl = `https://sirotech.vercel.app/blog/${slug}`;
+  const canonicalUrl = `${SITE_URL}/blog/${slug}`;
   const encodedUrl = encodeURIComponent(canonicalUrl);
   const encodedTitle = encodeURIComponent(title);
 

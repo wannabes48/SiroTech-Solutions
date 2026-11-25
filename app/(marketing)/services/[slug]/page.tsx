@@ -31,6 +31,7 @@ import {
   Wrench,
   type LucideIcon,
 } from "lucide-react";
+import { SITE_URL } from "@/lib/site";
 
 const iconMap: Record<string, LucideIcon> = {
   "custom-software": Code2,
@@ -93,13 +94,13 @@ export default async function ServiceDetailPage({
     "@graph": [
       {
         "@type": "Service",
-        "@id": `https://sirotech.vercel.app/services/${service.slug}#service`,
+        "@id": `${SITE_URL}/services/${service.slug}#service`,
         name: service.title,
         description: service.summary,
         provider: {
           "@type": "Organization",
           name: "SiroTech Solutions",
-          url: "https://sirotech.vercel.app",
+          url: SITE_URL,
         },
         areaServed: [
           { "@type": "Country", name: "Kenya" },
@@ -109,7 +110,7 @@ export default async function ServiceDetailPage({
       },
       {
         "@type": "FAQPage",
-        "@id": `https://sirotech.vercel.app/services/${service.slug}#faq`,
+        "@id": `${SITE_URL}/services/${service.slug}#faq`,
         mainEntity: service.faqs.map((faq) => ({
           "@type": "Question",
           name: faq.q,

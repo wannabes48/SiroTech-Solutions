@@ -21,6 +21,7 @@ import {
   Globe,
 } from "lucide-react";
 import Link from "next/link";
+import { SITE_URL } from "@/lib/site";
 
 export const metadata: Metadata = {
   title: "About Us — Engineering Philosophy & Leadership | SiroTech Solutions",
@@ -33,16 +34,16 @@ const aboutJsonLd = {
   "@graph": [
     {
       "@type": "AboutPage",
-      "@id": "https://sirotech.vercel.app/about/#webpage",
-      url: "https://sirotech.vercel.app/about",
+      "@id": `${SITE_URL}/about/#webpage`,
+      url: `${SITE_URL}/about`,
       name: "About SiroTech Solutions",
       description: "Our mission, architectural heritage, and senior engineering leadership.",
     },
     {
       "@type": "Organization",
-      "@id": "https://sirotech.vercel.app/#organization",
+      "@id": `${SITE_URL}/#organization`,
       name: "SiroTech Solutions",
-      url: "https://sirotech.vercel.app",
+      url: SITE_URL,
       founder: {
         "@type": "Person",
         name: "Daniel Siro",

@@ -25,6 +25,7 @@ import {
   ShieldCheck,
   Zap,
 } from "lucide-react";
+import { SITE_URL } from "@/lib/site";
 
 export async function generateStaticParams() {
   const list = await getIndustries();
@@ -49,7 +50,7 @@ export async function generateMetadata({
     openGraph: {
       title: `${industry.title} Software Solutions | SiroTech`,
       description: industry.summary,
-      url: `https://sirotech.vercel.app/industries/${industry.slug}`,
+      url: `${SITE_URL}/industries/${industry.slug}`,
     },
   };
 }
@@ -77,18 +78,18 @@ export default async function IndustryDetailPage({
     "@graph": [
       {
         "@type": "Service",
-        "@id": `https://sirotech.vercel.app/industries/${industry.slug}#service`,
+        "@id": `${SITE_URL}/industries/${industry.slug}#service`,
         name: `${industry.title} Engineering Solutions`,
         description: industry.summary,
         provider: {
           "@type": "Organization",
           name: "SiroTech Solutions",
-          url: "https://sirotech.vercel.app",
+          url: SITE_URL,
         },
       },
       {
         "@type": "FAQPage",
-        "@id": `https://sirotech.vercel.app/industries/${industry.slug}#faq`,
+        "@id": `${SITE_URL}/industries/${industry.slug}#faq`,
         mainEntity: industry.faqs.map((faq) => ({
           "@type": "Question",
           name: faq.q,
@@ -105,19 +106,19 @@ export default async function IndustryDetailPage({
             "@type": "ListItem",
             position: 1,
             name: "Home",
-            item: "https://sirotech.vercel.app",
+            item: SITE_URL,
           },
           {
             "@type": "ListItem",
             position: 2,
             name: "Industries",
-            item: "https://sirotech.vercel.app/industries",
+            item: `${SITE_URL}/industries`,
           },
           {
             "@type": "ListItem",
             position: 3,
             name: industry.title,
-            item: `https://sirotech.vercel.app/industries/${industry.slug}`,
+            item: `${SITE_URL}/industries/${industry.slug}`,
           },
         ],
       },

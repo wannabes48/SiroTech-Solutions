@@ -24,6 +24,7 @@ import {
   CheckCircle2,
   Share2,
 } from "lucide-react";
+import { SITE_URL } from "@/lib/site";
 
 export async function generateStaticParams() {
   const posts = getAllPosts();
@@ -48,7 +49,7 @@ export async function generateMetadata({
     openGraph: {
       title: post.title,
       description: post.excerpt,
-      url: `https://sirotech.vercel.app/blog/${post.slug}`,
+      url: `${SITE_URL}/blog/${post.slug}`,
       type: "article",
       images: [{ url: post.cover, width: 1200, height: 630 }],
     },
@@ -80,7 +81,7 @@ export default async function BlogPostPage({
     "@graph": [
       {
         "@type": "Article",
-        "@id": `https://sirotech.vercel.app/blog/${post.slug}#article`,
+        "@id": `${SITE_URL}/blog/${post.slug}#article`,
         headline: post.title,
         description: post.excerpt,
         image: post.cover,
@@ -94,11 +95,11 @@ export default async function BlogPostPage({
         publisher: {
           "@type": "Organization",
           name: "SiroTech Solutions",
-          url: "https://sirotech.vercel.app",
+          url: SITE_URL,
         },
         mainEntityOfPage: {
           "@type": "WebPage",
-          "@id": `https://sirotech.vercel.app/blog/${post.slug}`,
+          "@id": `${SITE_URL}/blog/${post.slug}`,
         },
       },
       {
@@ -108,19 +109,19 @@ export default async function BlogPostPage({
             "@type": "ListItem",
             position: 1,
             name: "Home",
-            item: "https://sirotech.vercel.app",
+            item: SITE_URL,
           },
           {
             "@type": "ListItem",
             position: 2,
             name: "Blog",
-            item: "https://sirotech.vercel.app/blog",
+            item: `${SITE_URL}/blog`,
           },
           {
             "@type": "ListItem",
             position: 3,
             name: post.title,
-            item: `https://sirotech.vercel.app/blog/${post.slug}`,
+            item: `${SITE_URL}/blog/${post.slug}`,
           },
         ],
       },

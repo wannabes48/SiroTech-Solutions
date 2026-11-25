@@ -21,6 +21,7 @@ import {
   CheckCircle2,
   type LucideIcon,
 } from "lucide-react";
+import { SITE_URL } from "@/lib/site";
 
 export const metadata: Metadata = {
   title: "Industries & Sector Specializations | SiroTech Solutions Nairobi",
@@ -30,7 +31,7 @@ export const metadata: Metadata = {
     title: "Industries We Serve | SiroTech Solutions Nairobi",
     description:
       "Enterprise systems engineered around regulatory, operational, and commercial sector constraints.",
-    url: "https://sirotech.vercel.app/industries",
+    url: `${SITE_URL}/industries`,
   },
 };
 
@@ -51,15 +52,15 @@ export default function IndustriesIndexPage() {
     "@graph": [
       {
         "@type": "CollectionPage",
-        "@id": "https://sirotech.vercel.app/industries#page",
+        "@id": `${SITE_URL}/industries#page`,
         name: "Industries & Sector Solutions | SiroTech Solutions",
         description:
           "Software architectures engineered for domain-specific constraints across 8 core industries.",
-        url: "https://sirotech.vercel.app/industries",
+        url: `${SITE_URL}/industries`,
         isPartOf: {
           "@type": "WebSite",
           name: "SiroTech Solutions",
-          url: "https://sirotech.vercel.app",
+          url: SITE_URL,
         },
       },
       {
@@ -69,13 +70,13 @@ export default function IndustriesIndexPage() {
             "@type": "ListItem",
             position: 1,
             name: "Home",
-            item: "https://sirotech.vercel.app",
+            item: SITE_URL,
           },
           {
             "@type": "ListItem",
             position: 2,
             name: "Industries",
-            item: "https://sirotech.vercel.app/industries",
+            item: `${SITE_URL}/industries`,
           },
         ],
       },
