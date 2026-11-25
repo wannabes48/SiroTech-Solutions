@@ -51,6 +51,11 @@ export default function RootLayout({
   return (
     <html lang="en" className={`scroll-smooth ${plusJakarta.variable}`}>
       <head>
+        {/* Google Tag Manager container (uses the dataLayer/gtag set up in google-tag-init below) */}
+        <Script
+          strategy="afterInteractive"
+          src="https://www.googletagmanager.com/gtm.js?id=GTM-5RR6NPWZ"
+        />
         <Script
           strategy="afterInteractive"
           src="https://www.googletagmanager.com/gtag/js?id=G-GZM0QEVRFM"
