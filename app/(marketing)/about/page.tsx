@@ -129,7 +129,7 @@ export default function AboutPage() {
           <div className="lg:col-span-5">
             <div className="relative w-full aspect-[4/5] rounded-[32px] overflow-hidden bg-sage-100 border border-rule shadow-xl">
               <img
-                src="https://danielsiroportfolio.vercel.app/assets/profile-portrait-148fb244.webp"
+                src="/profile-portrait.png"
                 alt="Portrait of Daniel Siro, Founder and Principal Solutions Architect"
                 className="w-full h-full object-cover object-top"
               />
